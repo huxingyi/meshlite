@@ -1,0 +1,7 @@
+[package]
+name = "meshlite"
+version = "0.1.0"
+authors = ["Xingyi HU <huxingyi@msn.com>"]
+
+[dependencies]
+cgmath = "0.16"
