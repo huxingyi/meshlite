@@ -1,174 +1,311 @@
 use cgmath::Vector3;
 use std::option::Option;
-use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::string::String;
 use std::str::FromStr;
 use std::io;
 use std::vec::Vec;
+use std::collections::HashMap;
 
-type VertexMutPtr = *mut Vertex;
-type HalfedgeMutPtr = *mut Halfedge;
-type FaceMutPtr = *mut Face;
+type Id = usize;
 
+#[derive(Debug)]
 pub struct Vertex {
+    id: Id,
     position: Vector3<f32>,
     index: usize,
-    halfedge: Option<HalfedgeMutPtr>,
-    previous: Option<VertexMutPtr>,
-    next: Option<VertexMutPtr>,
+    halfedge: Id,
+    previous: Id,
+    next: Id,
+    alive: bool,
 }
 
+#[derive(Debug)]
 pub struct Face {
-    halfedge: Option<HalfedgeMutPtr>,
-    previous: Option<FaceMutPtr>,
-    next: Option<FaceMutPtr>,
+    id: Id,
+    halfedge: Id,
+    previous: Id,
+    next: Id,
+    alive: bool,
 }
 
+#[derive(Debug)]
 pub struct Halfedge {
-    vertex: Option<VertexMutPtr>,
-    face: Option<FaceMutPtr>,
-    previous: Option<HalfedgeMutPtr>,
-    next: Option<HalfedgeMutPtr>,
-    opposite: Option<HalfedgeMutPtr>,
+    id: Id,
+    vertex: Id,
+    face: Id,
+    previous: Id,
+    next: Id,
+    opposite: Id,
+    alive: bool,
+}
+
+
+#[derive(Hash, Eq, PartialEq, Debug)]
+struct EdgeEndpoints {
+    low: Id,
+    high: Id,
+}
+
+impl EdgeEndpoints {
+    pub fn new(first: Id, second: Id) -> Self {
+        if first < second {
+            EdgeEndpoints {
+                low: first,
+                high: second
+            }
+        } else {
+            EdgeEndpoints {
+                low: second,
+                high: first
+            }
+        }
+    }
+}
+
+struct FaceIterator<'a> {
+    index: usize,
+    mesh: &'a Mesh,
+}
+
+impl<'a> Iterator for FaceIterator<'a> {
+    type Item = Id;
+
+    fn next(&mut self) -> Option<Id> {
+        while self.index < self.mesh.faces.len() {
+            if self.mesh.faces[self.index].alive {
+                self.index += 1;
+                return Some(self.mesh.faces[self.index].id);
+            }
+        }
+        None
+    }
+}
+
+struct FaceHalfedgeIterator<'a> {
+    stop_id: Id,
+    current_id: Id,
+    mesh: &'a Mesh,
+}
+
+impl<'a> Iterator for FaceHalfedgeIterator<'a> {
+    type Item = Id;
+
+    fn next(&mut self) -> Option<Id> {
+        let current_halfedge = self.mesh.halfedge(self.current_id);
+        match current_halfedge {
+            Some(halfedge) => {
+                if halfedge.next == self.stop_id {
+                    return None;
+                }
+                Some(halfedge.next)
+            },
+            _ => None
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct Mesh {
-    first_vertex: Option<VertexMutPtr>,
-    last_vertex: Option<VertexMutPtr>,
+    vertices: Vec<Vertex>,
     vertex_count: usize,
-    first_face: Option<FaceMutPtr>,
-    last_face: Option<FaceMutPtr>,
+    faces: Vec<Face>,
     face_count: usize,
-}
-
-impl Vertex {
-    pub fn boxed_new(position: Vector3<f32>) -> Box<Vertex> {
-        Box::new(Vertex {
-            halfedge: None,
-            previous: None,
-            next: None,
-            position : position,
-            index: 0,
-        })
-    }
-
-    fn into_position(self: Box<Self>) -> Vector3<f32> {
-        self.position
-    }
-}
-
-impl Halfedge {
-    pub fn boxed_new() -> Box<Halfedge> {
-        Box::new(Halfedge {
-            vertex: None,
-            face: None,
-            previous: None,
-            next: None,
-            opposite: None,
-        })
-    }
-}
-
-impl Face {
-    pub fn boxed_new() -> Box<Face> {
-        Box::new(Face {
-            halfedge: None,
-            previous: None,
-            next: None,
-        })
-    }
+    halfedges: Vec<Halfedge>,
+    halfedge_count: usize,
+    edges: HashMap<EdgeEndpoints, Id>,
+    edge_count: usize,
 }
 
 impl Mesh {
+    pub fn face_iter<'a>(&'a self) -> FaceIterator<'a> {
+        FaceIterator {
+            index: 0,
+            mesh: self,
+        }
+    }
+
+    pub fn face_halfedge_iter<'a>(&'a self, start_id: Id) -> FaceHalfedgeIterator<'a> {
+        FaceHalfedgeIterator {
+            stop_id: start_id,
+            current_id: start_id,
+            mesh: self,
+        }
+    }
+
     pub fn new() -> Self {
         Mesh {
-            first_vertex: None,
-            last_vertex: None,
+            vertices: Vec::new(),
             vertex_count: 0,
-            first_face: None,
-            last_face: None,
+            faces: Vec::new(),
             face_count: 0,
+            halfedges: Vec::new(),
+            halfedge_count: 0,
+            edges: HashMap::new(),
+            edge_count: 0,
         }
     }
 
-    fn add_halfedge(&mut self, halfedge: Box<Halfedge>) -> HalfedgeMutPtr {
-        Box::into_raw(halfedge)
+    pub fn vertex(&self, id: Id) -> Option<&Vertex> {
+        if 0 == id {
+            return None;
+        }
+        {
+            let vertex = &self.vertices[id - 1];
+            if !vertex.alive {
+                return None;
+            }
+        }
+        Some(&self.vertices[id - 1])
     }
 
-    fn add_face(&mut self, mut face: Box<Face>) -> FaceMutPtr {
-        face.next = self.first_face;
-        face.previous = None;
-        let face_mut_ptr : FaceMutPtr = Box::into_raw(face);
-        match self.first_face {
-            None => self.last_face = Some(face_mut_ptr),
-            Some(first_face) => unsafe {
-                (*first_face).previous = Some(face_mut_ptr)
-            },
+    pub fn vertex_mut(&mut self, id: Id) -> Option<&mut Vertex> {
+        if 0 == id {
+            return None;
         }
-        self.first_face = Some(face_mut_ptr);
-        self.face_count += 1;
-        face_mut_ptr
+        {
+            let vertex = &self.vertices[id - 1];
+            if !vertex.alive {
+                return None;
+            }
+        }
+        Some(&mut self.vertices[id - 1])
     }
 
-    fn add_vertex(&mut self, mut vertex: Box<Vertex>) -> VertexMutPtr {
-        vertex.next = self.first_vertex;
-        vertex.previous = None;
-        let vertex_mut_ptr : VertexMutPtr = Box::into_raw(vertex);
-        match self.first_vertex {
-            None => self.last_vertex = Some(vertex_mut_ptr),
-            Some(first_vertex) => unsafe {
-                (*first_vertex).previous = Some(vertex_mut_ptr)
-            },
+    pub fn face(&self, id: Id) -> Option<&Face> {
+        if 0 == id {
+            return None;
         }
-        self.first_vertex = Some(vertex_mut_ptr);
-        self.vertex_count += 1;
-        vertex_mut_ptr
+        {
+            let face = &self.faces[id - 1];
+            if !face.alive {
+                return None;
+            }
+        }
+        Some(&self.faces[id - 1])
+    }
+
+    pub fn face_mut(&mut self, id: Id) -> Option<&mut Face> {
+        if 0 == id {
+            return None;
+        }
+        {
+            let face = &self.faces[id - 1];
+            if !face.alive {
+                return None;
+            }
+        }
+        Some(&mut self.faces[id - 1])
+    }
+
+    pub fn halfedge(&self, id: Id) -> Option<&Halfedge> {
+        if 0 == id {
+            return None;
+        }
+        {
+            let halfedge = &self.halfedges[id - 1];
+            if !halfedge.alive {
+                return None;
+            }
+        }
+        Some(&self.halfedges[id - 1])
+    }
+
+    pub fn halfedge_mut(&mut self, id: Id) -> Option<&mut Halfedge> {
+        if 0 == id {
+            return None;
+        }
+        {
+            let halfedge = &self.halfedges[id - 1];
+            if !halfedge.alive {
+                return None;
+            }
+        }
+        Some(&mut self.halfedges[id - 1])
+    }
+
+    pub fn add_vertex(&mut self, position: Vector3<f32>) -> usize {
+        let new_id = self.vertices.len() + 1;
+        self.vertices.push(Vertex {
+            id: new_id,
+            halfedge: 0,
+            previous: 0,
+            next: 0,
+            position : position,
+            index: 0,
+            alive: true,
+        });
+        new_id
+    }
+
+    pub fn add_halfedge(&mut self) -> Id {
+        let new_id = self.halfedges.len() + 1;
+        self.halfedges.push(Halfedge {
+            id: new_id,
+            vertex: 0,
+            face: 0,
+            previous: 0,
+            next: 0,
+            opposite: 0,
+            alive: true,
+        });
+        new_id
+    }
+
+    pub fn pair_halfeges(&mut self, first: Id, second: Id) {
+        self.halfedge_mut(first).unwrap().opposite = second;
+        self.halfedge_mut(second).unwrap().opposite = first;
+    }
+
+    pub fn link_halfedges(&mut self, first: Id, second: Id) {
+        self.halfedge_mut(first).unwrap().next = second;
+        self.halfedge_mut(second).unwrap().previous = first;
+        let endpoints = EdgeEndpoints::new(self.halfedge_mut(first).unwrap().vertex,
+            self.halfedge_mut(second).unwrap().vertex);
+        match self.edges.get(&endpoints) {
+            Some(&halfedge) => self.pair_halfeges(first, halfedge),
+            _ => {
+                self.edges.insert(endpoints, first);
+                self.edge_count += 1; 
+            }
+        };
+    }
+
+    pub fn add_face(&mut self) -> Id {
+        let new_id = self.faces.len() + 1;
+        self.faces.push(Face {
+            id: new_id,
+            halfedge: 0,
+            previous: 0,
+            next: 0,
+            alive: true,
+        });
+        new_id
     }
 
     pub fn save_obj(&mut self, filename: &str) -> io::Result<()> {
         let mut f = File::create(filename)?;
         let mut i = 0;
-        let mut face = self.first_face;
-        while let Some(face_mut_ptr) = face {
-            unsafe {
-                let mut halfedge = (*face_mut_ptr).halfedge;
-                let stop = halfedge;
-                loop {
-                    i += 1;
-                    let halfedge_mut_ptr = halfedge.unwrap();
-                    let vertex_mut_ptr = (*halfedge_mut_ptr).vertex.unwrap();
-                    (*vertex_mut_ptr).index = i;
-                    let position = (*vertex_mut_ptr).position;
-                    writeln!(f, "v {} {} {}", position.x, position.y, position.z)?;
-                    halfedge = (*halfedge_mut_ptr).next;
-                    if halfedge == stop {
-                        break;
-                    }
-                }
-                face = (*face_mut_ptr).next;
+        let mut face_iter = self.face_iter();
+        while let Some(face_id) = face_iter.next() {
+            let face = self.face(face_id).unwrap();
+            let mut face_halfedge_iter = self.face_halfedge_iter(face.id);
+            while let Some(halfedge_id) = face_halfedge_iter.next() {
+                let halfedge = self.halfedge(halfedge_id).unwrap();
+                let vertex = self.vertex(halfedge.vertex).unwrap();
+                writeln!(f, "v {} {} {}", vertex.position.x, vertex.position.y, vertex.position.z)?;
             }
         }
-        face = self.first_face;
-        while let Some(face_mut_ptr) = face {
-            unsafe {
-                let mut halfedge = (*face_mut_ptr).halfedge;
-                let stop = halfedge;
-                write!(f, "f")?;
-                loop {
-                    let halfedge_mut_ptr = halfedge.unwrap();
-                    let vertex_mut_ptr = (*halfedge_mut_ptr).vertex.unwrap();
-                    write!(f, " {}", (*vertex_mut_ptr).index)?;
-                    halfedge = (*halfedge_mut_ptr).next;
-                    if halfedge == stop {
-                        break;
-                    }
-                }
-                writeln!(f, "")?;
-                face = (*face_mut_ptr).next;
+        let mut face_iter = self.face_iter();
+        while let Some(face_id) = face_iter.next() {
+            let face = self.face(face_id).unwrap();
+            let mut face_halfedge_iter = self.face_halfedge_iter(face.id);
+            while !face_halfedge_iter.next().is_none() {
+                i += 1;
+                write!(f, " {}", i)?;
             }
+            writeln!(f, "")?;
         }
         Ok(())
     }
@@ -178,7 +315,6 @@ impl Mesh {
         let mut contents = String::new();
         f.read_to_string(&mut contents)?;
         let lines = contents.lines();
-        let mut vertex_index = 0;
         let mut vertex_array = Vec::new();
         for line in lines {
             let mut words = line.split_whitespace().filter(|s| !s.is_empty());
@@ -187,34 +323,23 @@ impl Mesh {
                     let (x, y, z) = (f32::from_str(words.next().unwrap()).unwrap(),
                         f32::from_str(words.next().unwrap()).unwrap(),
                         f32::from_str(words.next().unwrap()).unwrap());
-                    let mut boxed_vertex = Vertex::boxed_new(Vector3::new(x, y, z));
-                    vertex_index += 1;
-                    boxed_vertex.index = vertex_index;
-                    vertex_array.push(self.add_vertex(boxed_vertex));
+                    vertex_array.push(self.add_vertex(Vector3::new(x, y, z)));
                 },
                 Some("f") => {
-                    let mut face = Face::boxed_new();
-                    let mut added_halfedges : Vec<(HalfedgeMutPtr, VertexMutPtr)> = Vec::new();
-                    let mut face_mut_ptr = self.add_face(face);
+                    let face_id = self.add_face();
+                    let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
                     while let Some(index_str) = words.next() {
                         let index = usize::from_str(index_str).unwrap() - 1;
-                        added_halfedges.push((self.add_halfedge(Halfedge::boxed_new()),
-                            vertex_array[index]));
+                        added_halfedges.push((self.add_halfedge(), vertex_array[index]));
                     }
                     let mut i = 0;
-                    unsafe {
-                        (*face_mut_ptr).halfedge = Some(added_halfedges[0].0);
-                    }
-                    for (h, v) in added_halfedges.iter().cloned() {
-                        unsafe {
-                            let mut first = added_halfedges[i].0;
-                            let mut second = added_halfedges[(i + 1) % added_halfedges.len()].0;
-                            (*first).next = Some(second);
-                            (*second).previous = Some(first);
-                            (*v).halfedge = Some(h);
-                            (*h).face = Some(face_mut_ptr);
-                            (*h).vertex = Some(v);
-                        }
+                    for (halfedge_id, vertex_id) in added_halfedges.clone() {
+                        let first = added_halfedges[i].0;
+                        let second = added_halfedges[(i + 1) % added_halfedges.len()].0;
+                        self.link_halfedges(first, second);
+                        self.vertex_mut(vertex_id).unwrap().halfedge = halfedge_id;
+                        self.halfedge_mut(halfedge_id).unwrap().face = face_id;
+                        self.halfedge_mut(halfedge_id).unwrap().vertex = vertex_id;
                         i += 1;
                     }
                 },
