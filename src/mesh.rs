@@ -64,7 +64,7 @@ impl EdgeEndpoints {
     }
 }
 
-struct FaceIterator<'a> {
+pub struct FaceIterator<'a> {
     index: usize,
     mesh: &'a Mesh,
 }
@@ -76,16 +76,27 @@ impl<'a> Iterator for FaceIterator<'a> {
         while self.index < self.mesh.faces.len() {
             if self.mesh.faces[self.index].alive {
                 self.index += 1;
-                return Some(self.mesh.faces[self.index].id);
+                return Some(self.mesh.faces[self.index - 1].id);
             }
+            self.index += 1;
         }
         None
     }
 }
 
-struct FaceHalfedgeIterator<'a> {
+impl<'a> FaceIterator<'a> {
+    pub fn new(mesh: &'a Mesh) -> FaceIterator<'a> {
+        FaceIterator {
+            index: 0,
+            mesh: mesh,
+        }
+    }
+}
+
+pub struct FaceHalfedgeIterator<'a> {
     stop_id: Id,
     current_id: Id,
+    index: usize,
     mesh: &'a Mesh,
 }
 
@@ -93,15 +104,23 @@ impl<'a> Iterator for FaceHalfedgeIterator<'a> {
     type Item = Id;
 
     fn next(&mut self) -> Option<Id> {
-        let current_halfedge = self.mesh.halfedge(self.current_id);
-        match current_halfedge {
-            Some(halfedge) => {
-                if halfedge.next == self.stop_id {
-                    return None;
-                }
-                Some(halfedge.next)
-            },
-            _ => None
+        let id = self.current_id;
+        self.current_id = self.mesh.halfedge(self.current_id).unwrap().next;
+        if id == self.stop_id && self.index > 0 {
+            return None;
+        }
+        self.index += 1;
+        Some(id)
+    }
+}
+
+impl<'a> FaceHalfedgeIterator<'a> {
+    pub fn new(mesh: &'a Mesh, start_id: Id) -> FaceHalfedgeIterator<'a> {
+        FaceHalfedgeIterator {
+            stop_id: start_id,
+            current_id: start_id,
+            index: 0,
+            mesh: mesh,
         }
     }
 }
@@ -119,21 +138,6 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn face_iter<'a>(&'a self) -> FaceIterator<'a> {
-        FaceIterator {
-            index: 0,
-            mesh: self,
-        }
-    }
-
-    pub fn face_halfedge_iter<'a>(&'a self, start_id: Id) -> FaceHalfedgeIterator<'a> {
-        FaceHalfedgeIterator {
-            stop_id: start_id,
-            current_id: start_id,
-            mesh: self,
-        }
-    }
-
     pub fn new() -> Self {
         Mesh {
             vertices: Vec::new(),
@@ -261,8 +265,8 @@ impl Mesh {
     pub fn link_halfedges(&mut self, first: Id, second: Id) {
         self.halfedge_mut(first).unwrap().next = second;
         self.halfedge_mut(second).unwrap().previous = first;
-        let endpoints = EdgeEndpoints::new(self.halfedge_mut(first).unwrap().vertex,
-            self.halfedge_mut(second).unwrap().vertex);
+        let endpoints = EdgeEndpoints::new(self.halfedge(first).unwrap().vertex,
+            self.halfedge(second).unwrap().vertex);
         match self.edges.get(&endpoints) {
             Some(&halfedge) => self.pair_halfeges(first, halfedge),
             _ => {
@@ -287,23 +291,35 @@ impl Mesh {
     pub fn save_obj(&mut self, filename: &str) -> io::Result<()> {
         let mut f = File::create(filename)?;
         let mut i = 0;
-        let mut face_iter = self.face_iter();
-        while let Some(face_id) = face_iter.next() {
-            let face = self.face(face_id).unwrap();
-            let mut face_halfedge_iter = self.face_halfedge_iter(face.id);
-            while let Some(halfedge_id) = face_halfedge_iter.next() {
-                let halfedge = self.halfedge(halfedge_id).unwrap();
-                let vertex = self.vertex(halfedge.vertex).unwrap();
+        let mut vertices = Vec::new();
+        {
+            let mut face_iter = FaceIterator::new(self);
+            while let Some(face_id) = face_iter.next() {
+                let face = self.face(face_id).unwrap();
+                let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
+                while let Some(halfedge_id) = face_halfedge_iter.next() {
+                    let halfedge = self.halfedge(halfedge_id).unwrap();
+                    vertices.push(halfedge.vertex);
+                }
+            }
+        }
+        for vertex_id in vertices {
+            let mut vertex = self.vertex_mut(vertex_id).unwrap();
+            if 0 == vertex.index {
+                i += 1;
+                vertex.index = i;
                 writeln!(f, "v {} {} {}", vertex.position.x, vertex.position.y, vertex.position.z)?;
             }
         }
-        let mut face_iter = self.face_iter();
+        let mut face_iter = FaceIterator::new(self);
         while let Some(face_id) = face_iter.next() {
             let face = self.face(face_id).unwrap();
-            let mut face_halfedge_iter = self.face_halfedge_iter(face.id);
-            while !face_halfedge_iter.next().is_none() {
-                i += 1;
-                write!(f, " {}", i)?;
+            let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
+            write!(f, "f")?;
+            while let Some(halfedge_id) = face_halfedge_iter.next() {
+                let halfedge = self.halfedge(halfedge_id).unwrap();
+                let vertex = self.vertex(halfedge.vertex).unwrap();
+                write!(f, " {}", vertex.index)?;
             }
             writeln!(f, "")?;
         }
@@ -332,15 +348,16 @@ impl Mesh {
                         let index = usize::from_str(index_str).unwrap() - 1;
                         added_halfedges.push((self.add_halfedge(), vertex_array[index]));
                     }
-                    let mut i = 0;
-                    for (halfedge_id, vertex_id) in added_halfedges.clone() {
-                        let first = added_halfedges[i].0;
-                        let second = added_halfedges[(i + 1) % added_halfedges.len()].0;
-                        self.link_halfedges(first, second);
+                    for &(halfedge_id, vertex_id) in added_halfedges.iter() {
                         self.vertex_mut(vertex_id).unwrap().halfedge = halfedge_id;
                         self.halfedge_mut(halfedge_id).unwrap().face = face_id;
                         self.halfedge_mut(halfedge_id).unwrap().vertex = vertex_id;
-                        i += 1;
+                    }
+                    self.face_mut(face_id).unwrap().halfedge = added_halfedges[0].0;
+                    for i in 0..added_halfedges.len() {
+                        let first = added_halfedges[i].0;
+                        let second = added_halfedges[(i + 1) % added_halfedges.len()].0;
+                        self.link_halfedges(first, second);
                     }
                 },
                 _ => ()
