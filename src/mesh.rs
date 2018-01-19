@@ -1,4 +1,6 @@
+use cgmath::Point3;
 use cgmath::Vector3;
+use cgmath::prelude::*;
 use std::option::Option;
 use std::fs::File;
 use std::io::prelude::*;
@@ -7,43 +9,45 @@ use std::str::FromStr;
 use std::io;
 use std::vec::Vec;
 use std::collections::HashMap;
+use iterator::FaceHalfedgeIterator;
+use iterator::FaceIterator;
 
-type Id = usize;
+pub type Id = usize;
 
 #[derive(Debug)]
 pub struct Vertex {
-    id: Id,
-    position: Vector3<f32>,
-    index: usize,
-    halfedge: Id,
-    previous: Id,
-    next: Id,
-    alive: bool,
+    pub id: Id,
+    pub position: Point3<f32>,
+    pub index: usize,
+    pub halfedge: Id,
+    pub previous: Id,
+    pub next: Id,
+    pub alive: bool,
 }
 
 #[derive(Debug)]
 pub struct Face {
-    id: Id,
-    halfedge: Id,
-    previous: Id,
-    next: Id,
-    alive: bool,
+    pub id: Id,
+    pub halfedge: Id,
+    pub previous: Id,
+    pub next: Id,
+    pub alive: bool,
 }
 
 #[derive(Debug)]
 pub struct Halfedge {
-    id: Id,
-    vertex: Id,
-    face: Id,
-    previous: Id,
-    next: Id,
-    opposite: Id,
-    alive: bool,
+    pub id: Id,
+    pub vertex: Id,
+    pub face: Id,
+    pub previous: Id,
+    pub next: Id,
+    pub opposite: Id,
+    pub alive: bool,
 }
 
 
 #[derive(Hash, Eq, PartialEq, Debug)]
-struct EdgeEndpoints {
+pub struct EdgeEndpoints {
     low: Id,
     high: Id,
 }
@@ -64,77 +68,16 @@ impl EdgeEndpoints {
     }
 }
 
-pub struct FaceIterator<'a> {
-    index: usize,
-    mesh: &'a Mesh,
-}
-
-impl<'a> Iterator for FaceIterator<'a> {
-    type Item = Id;
-
-    fn next(&mut self) -> Option<Id> {
-        while self.index < self.mesh.faces.len() {
-            if self.mesh.faces[self.index].alive {
-                self.index += 1;
-                return Some(self.mesh.faces[self.index - 1].id);
-            }
-            self.index += 1;
-        }
-        None
-    }
-}
-
-impl<'a> FaceIterator<'a> {
-    pub fn new(mesh: &'a Mesh) -> FaceIterator<'a> {
-        FaceIterator {
-            index: 0,
-            mesh: mesh,
-        }
-    }
-}
-
-pub struct FaceHalfedgeIterator<'a> {
-    stop_id: Id,
-    current_id: Id,
-    index: usize,
-    mesh: &'a Mesh,
-}
-
-impl<'a> Iterator for FaceHalfedgeIterator<'a> {
-    type Item = Id;
-
-    fn next(&mut self) -> Option<Id> {
-        let id = self.current_id;
-        self.current_id = self.mesh.halfedge(self.current_id).unwrap().next;
-        if id == self.stop_id && self.index > 0 {
-            return None;
-        }
-        self.index += 1;
-        Some(id)
-    }
-}
-
-impl<'a> FaceHalfedgeIterator<'a> {
-    pub fn new(mesh: &'a Mesh, start_id: Id) -> FaceHalfedgeIterator<'a> {
-        FaceHalfedgeIterator {
-            stop_id: start_id,
-            current_id: start_id,
-            index: 0,
-            mesh: mesh,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Mesh {
-    vertices: Vec<Vertex>,
-    vertex_count: usize,
-    faces: Vec<Face>,
-    face_count: usize,
-    halfedges: Vec<Halfedge>,
-    halfedge_count: usize,
-    edges: HashMap<EdgeEndpoints, Id>,
-    edge_count: usize,
+    pub vertices: Vec<Vertex>,
+    pub vertex_count: usize,
+    pub faces: Vec<Face>,
+    pub face_count: usize,
+    pub halfedges: Vec<Halfedge>,
+    pub halfedge_count: usize,
+    pub edges: HashMap<EdgeEndpoints, Id>,
+    pub edge_count: usize,
 }
 
 impl Mesh {
@@ -175,6 +118,33 @@ impl Mesh {
             }
         }
         Some(&mut self.vertices[id - 1])
+    }
+
+    pub fn peek_same_halfedge(&self, any_paired_id: Id) -> Id {
+        let halfedge = self.halfedge(any_paired_id).unwrap();
+        if halfedge.opposite > 0 && halfedge.opposite < any_paired_id {
+            return halfedge.opposite;
+        }
+        any_paired_id
+    }
+
+    pub fn edge_center(&self, id: Id) -> Point3<f32> {
+        let halfedge = self.halfedge(id).unwrap();
+        let next = self.halfedge(halfedge.next).unwrap();
+        Point3::midpoint(self.vertex(halfedge.vertex).unwrap().position,
+            self.vertex(next.vertex).unwrap().position)
+    }
+
+    pub fn face_center(&self, id: Id) -> Point3<f32> {
+        let face = self.face(id).unwrap();
+        let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
+        let mut points = Vec::new();
+        while let Some(halfedge_id) = face_halfedge_iter.next() {
+            let halfedge = self.halfedge(halfedge_id).unwrap();
+            let vertex = self.vertex(halfedge.vertex).unwrap();
+            points.push(vertex.position);
+        }
+        Point3::centroid(&points)
     }
 
     pub fn face(&self, id: Id) -> Option<&Face> {
@@ -229,7 +199,7 @@ impl Mesh {
         Some(&mut self.halfedges[id - 1])
     }
 
-    pub fn add_vertex(&mut self, position: Vector3<f32>) -> usize {
+    pub fn add_vertex(&mut self, position: Point3<f32>) -> usize {
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
@@ -257,7 +227,7 @@ impl Mesh {
         new_id
     }
 
-    pub fn pair_halfeges(&mut self, first: Id, second: Id) {
+    pub fn pair_halfedges(&mut self, first: Id, second: Id) {
         self.halfedge_mut(first).unwrap().opposite = second;
         self.halfedge_mut(second).unwrap().opposite = first;
     }
@@ -268,7 +238,7 @@ impl Mesh {
         let endpoints = EdgeEndpoints::new(self.halfedge(first).unwrap().vertex,
             self.halfedge(second).unwrap().vertex);
         match self.edges.get(&endpoints) {
-            Some(&halfedge) => self.pair_halfeges(first, halfedge),
+            Some(&halfedge) => self.pair_halfedges(first, halfedge),
             _ => {
                 self.edges.insert(endpoints, first);
                 self.edge_count += 1; 
@@ -339,7 +309,7 @@ impl Mesh {
                     let (x, y, z) = (f32::from_str(words.next().unwrap()).unwrap(),
                         f32::from_str(words.next().unwrap()).unwrap(),
                         f32::from_str(words.next().unwrap()).unwrap());
-                    vertex_array.push(self.add_vertex(Vector3::new(x, y, z)));
+                    vertex_array.push(self.add_vertex(Point3::new(x, y, z)));
                 },
                 Some("f") => {
                     let face_id = self.add_face();
