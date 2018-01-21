@@ -33,6 +33,28 @@ impl<'a> VertexEdgeIterator<'a> {
     }
 }
 
+pub struct VertexEdgeCollection(Vec<Id>);
+
+impl VertexEdgeCollection {
+    pub fn new(mesh: &Mesh, start_id: Id) -> VertexEdgeCollection {
+        let mut halfedge_iter = VertexEdgeIterator::new(mesh, start_id);
+        let mut collection = VertexEdgeCollection(Vec::new());
+        while let Some(face_id) = halfedge_iter.next() {
+            collection.0.push(face_id);
+        }
+        collection
+    }
+}
+
+impl IntoIterator for VertexEdgeCollection {
+    type Item = Id;
+    type IntoIter = ::std::vec::IntoIter<Id>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 pub struct FaceIterator<'a> {
     index: usize,
     mesh: &'a Mesh,
@@ -87,8 +109,8 @@ impl IntoIterator for FaceCollection {
 pub struct FaceHalfedgeCollection(Vec<Id>);
 
 impl FaceHalfedgeCollection {
-    pub fn new(mesh: &Mesh, first_id: Id) -> FaceHalfedgeCollection {
-        let mut edge_iter = FaceHalfedgeIterator::new(mesh, first_id);
+    pub fn new(mesh: &Mesh, start_id: Id) -> FaceHalfedgeCollection {
+        let mut edge_iter = FaceHalfedgeIterator::new(mesh, start_id);
         let mut collection = FaceHalfedgeCollection(Vec::new());
         while let Some(halfedge_id) = edge_iter.next() {
             collection.0.push(halfedge_id);

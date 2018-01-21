@@ -11,6 +11,7 @@ use std::vec::Vec;
 use std::collections::HashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
+use util::*;
 
 pub type Id = usize;
 
@@ -147,6 +148,27 @@ impl Mesh {
         Point3::centroid(&points)
     }
 
+    pub fn face_norm(&self, id: Id) -> Vector3<f32> {
+        let face = self.face(id).unwrap();
+        let mut points = Vec::new();
+        for halfedge_id in FaceHalfedgeIterator::new(self, face.halfedge) {
+            let halfedge = self.halfedge(halfedge_id).unwrap();
+            let vertex = self.vertex(halfedge.vertex).unwrap();
+            points.push(vertex.position);
+        }
+        if points.len() < 3 {
+            return Vector3::zero();
+        } else if points.len() == 3 {
+            return norm(points[0], points[1], points[2]);
+        }
+        let mut total = Vector3::zero();
+        for i in 0..points.len() {
+            let n = norm(points[i], points[(i + 1) % points.len()], points[(i + 2) % points.len()]);
+            total += n;
+        }
+        total / points.len() as f32
+    }
+
     pub fn face(&self, id: Id) -> Option<&Face> {
         if 0 == id {
             return None;
@@ -158,6 +180,46 @@ impl Mesh {
             }
         }
         Some(&self.faces[id - 1])
+    }
+
+    pub fn face_adj_id(&self, id: Id) -> Option<Id> {
+        self.face(id)
+            .and_then(|f: &Face| self.halfedge(f.halfedge))
+            .and_then(|h: &Halfedge| self.halfedge(h.opposite))
+            .and_then(|o: &Halfedge| Some(o.face))
+    }
+
+    pub fn face_adj(&self, id: Id) -> Option<&Face> {
+        self.face_adj_id(id).and_then(|id: Id| self.face(id))
+    }
+
+    pub fn halfedge_next_id(&self, id: Id) -> Option<Id> {
+        self.halfedge(id)
+            .and_then(|h: &Halfedge| Some(h.next))
+    }
+
+    pub fn face_first_halfedge_id(&self, id: Id) -> Option<Id> {
+        self.face(id)
+            .and_then(|f: &Face| Some(f.halfedge))
+    }
+
+    pub fn halfedge_start_vertex_id(&self, id: Id) -> Option<Id> {
+        self.halfedge(id)
+            .and_then(|h: &Halfedge| Some(h.vertex))
+    }
+
+    pub fn halfedge_start_vertex_mut(&mut self, id: Id) -> Option<&mut Vertex> {
+        let vertex_id = self.halfedge_start_vertex_id(id)?;
+        self.vertex_mut(vertex_id)
+    }
+
+    pub fn halfedge_start_vertex(&self, id: Id) -> Option<&Vertex> {
+        let vertex_id = self.halfedge_start_vertex_id(id)?;
+        self.vertex(vertex_id)
+    }
+
+    pub fn remove_face(&self, id: Id) {
+        // TODO:
     }
 
     pub fn face_mut(&mut self, id: Id) -> Option<&mut Face> {
