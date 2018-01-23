@@ -186,7 +186,7 @@ impl Mesh {
         self.face(id)
             .and_then(|f: &Face| self.halfedge(f.halfedge))
             .and_then(|h: &Halfedge| self.halfedge(h.opposite))
-            .and_then(|o: &Halfedge| Some(o.face))
+            .and_then(|o: &Halfedge| if 0 != o.face { Some(o.face) } else { None })
     }
 
     pub fn face_adj(&self, id: Id) -> Option<&Face> {
@@ -195,17 +195,26 @@ impl Mesh {
 
     pub fn halfedge_next_id(&self, id: Id) -> Option<Id> {
         self.halfedge(id)
-            .and_then(|h: &Halfedge| Some(h.next))
+            .and_then(|h: &Halfedge| if 0 != h.next { Some(h.next) } else { None })
+    }
+
+    pub fn halfedge_opposite_id(&self, id: Id) -> Option<Id> {
+        self.halfedge(id)
+            .and_then(|h: &Halfedge| if 0 != h.opposite { Some(h.opposite) } else { None })
     }
 
     pub fn face_first_halfedge_id(&self, id: Id) -> Option<Id> {
         self.face(id)
-            .and_then(|f: &Face| Some(f.halfedge))
+            .and_then(|f: &Face| if 0 != f.halfedge { Some(f.halfedge) } else { None })
     }
 
     pub fn halfedge_start_vertex_id(&self, id: Id) -> Option<Id> {
         self.halfedge(id)
-            .and_then(|h: &Halfedge| Some(h.vertex))
+            .and_then(|h: &Halfedge| if 0 != h.vertex { Some(h.vertex) } else { None })
+    }
+
+    pub fn set_halfedge_start_vertex_id(&mut self, halfedge_id: Id, vertex_id: Id) {
+        self.halfedge_mut(halfedge_id).unwrap().vertex = vertex_id;
     }
 
     pub fn halfedge_start_vertex_mut(&mut self, id: Id) -> Option<&mut Vertex> {
@@ -218,8 +227,29 @@ impl Mesh {
         self.vertex(vertex_id)
     }
 
-    pub fn remove_face(&self, id: Id) {
-        // TODO:
+    pub fn vertex_first_halfedge_id(&self, id: Id) -> Option<Id> {
+        self.vertex(id)
+            .and_then(|v: &Vertex| if 0 != v.halfedge { Some(v.halfedge) } else { None })
+    }
+
+    pub fn vertex_first_halfedge(&self, id: Id) -> Option<&Halfedge> {
+        let halfedge_id = self.vertex_first_halfedge_id(id)?;
+        self.halfedge(halfedge_id)
+    }
+
+    pub fn vertex_first_halfedge_mut(&mut self, id: Id) -> Option<&mut Halfedge> {
+        let halfedge_id = self.vertex_first_halfedge_id(id)?;
+        self.halfedge_mut(halfedge_id)
+    }
+
+    pub fn set_vertex_first_halfedge(&mut self, vertex_id: Id, halfedge_id: Id) {
+        self.vertex_mut(vertex_id).unwrap().halfedge = halfedge_id;
+    }
+
+    pub fn remove_face(&mut self, id: Id) {
+        self.face_mut(id).unwrap().alive = false;
+        // FIXME: change relations
+        // TODO: change to swap_remove
     }
 
     pub fn face_mut(&mut self, id: Id) -> Option<&mut Face> {
@@ -292,6 +322,11 @@ impl Mesh {
     pub fn pair_halfedges(&mut self, first: Id, second: Id) {
         self.halfedge_mut(first).unwrap().opposite = second;
         self.halfedge_mut(second).unwrap().opposite = first;
+    }
+
+    pub fn unpair_halfedges(&mut self, first: Id, second: Id) {
+        self.halfedge_mut(first).unwrap().opposite = 0;
+        self.halfedge_mut(second).unwrap().opposite = 0;
     }
 
     pub fn link_halfedges(&mut self, first: Id, second: Id) {
@@ -374,27 +409,110 @@ impl Mesh {
                     vertex_array.push(self.add_vertex(Point3::new(x, y, z)));
                 },
                 Some("f") => {
-                    let face_id = self.add_face();
                     let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
                     while let Some(index_str) = words.next() {
                         let index = usize::from_str(index_str).unwrap() - 1;
                         added_halfedges.push((self.add_halfedge(), vertex_array[index]));
                     }
-                    for &(halfedge_id, vertex_id) in added_halfedges.iter() {
-                        self.vertex_mut(vertex_id).unwrap().halfedge = halfedge_id;
-                        self.halfedge_mut(halfedge_id).unwrap().face = face_id;
-                        self.halfedge_mut(halfedge_id).unwrap().vertex = vertex_id;
-                    }
-                    self.face_mut(face_id).unwrap().halfedge = added_halfedges[0].0;
-                    for i in 0..added_halfedges.len() {
-                        let first = added_halfedges[i].0;
-                        let second = added_halfedges[(i + 1) % added_halfedges.len()].0;
-                        self.link_halfedges(first, second);
-                    }
+                    self.add_halfedges_and_vertices(added_halfedges);
                 },
                 _ => ()
             }
         }
         Ok(())
+    }
+
+    pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
+        let added_face_id = self.add_face();
+        for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
+            self.vertex_mut(added_vertex_id).unwrap().halfedge = added_halfedge_id;
+            self.halfedge_mut(added_halfedge_id).unwrap().face = added_face_id;
+            self.halfedge_mut(added_halfedge_id).unwrap().vertex = added_vertex_id;
+        }
+        self.face_mut(added_face_id).unwrap().halfedge = added_halfedges[0].0;
+        for i in 0..added_halfedges.len() {
+            let first = added_halfedges[i].0;
+            let second = added_halfedges[(i + 1) % added_halfedges.len()].0;
+            self.link_halfedges(first, second);
+        }
+        added_face_id
+    }
+
+    pub fn extrude_halfedges(&mut self, halfedges: &Vec<Id>, normal: Vector3<f32>, amount: f32) {
+        let mut downside_halfedges: Vec<Id> = Vec::new();
+        let mut downside_vertices: Vec<Id> = Vec::new();
+        let direct = normal * amount;
+        let mut need_fill_downside = false;
+        for &halfedge_id in halfedges {
+            let opposite = self.halfedge_opposite_id(halfedge_id);
+            if opposite.is_none() {
+                let old_position = {
+                    let mut vertex = self.halfedge_start_vertex_mut(halfedge_id).unwrap();
+                    let position = vertex.position;
+                    vertex.position += direct;
+                    position
+                };
+                downside_vertices.push(self.add_vertex(old_position));
+                downside_halfedges.push(self.add_halfedge());
+                need_fill_downside = true;
+            } else {
+                let old_vertex_id = self.halfedge_start_vertex_id(halfedge_id).unwrap();
+                let copy_position = self.halfedge_start_vertex(halfedge_id).unwrap().position;
+                let copy_vertex = self.add_vertex(copy_position);
+                if self.vertex_first_halfedge_id(old_vertex_id).unwrap() == halfedge_id {
+                    let opposite_next_halfedge_id = self.halfedge_next_id(opposite.unwrap()).unwrap();
+                    self.set_vertex_first_halfedge(old_vertex_id, opposite_next_halfedge_id);
+                }
+                self.set_halfedge_start_vertex_id(halfedge_id, copy_vertex);
+                self.unpair_halfedges(halfedge_id, opposite.unwrap());
+                downside_vertices.push(old_vertex_id);
+                downside_halfedges.push(opposite.unwrap());
+            }
+        }
+        for i in 0..halfedges.len() {
+            let halfedge_id = halfedges[i];
+            let i_next = (i + 1) % halfedges.len();
+            let next_halfedge_id = halfedges[i_next];
+            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+            let left_bottom = downside_vertices[i];
+            let right_bottom = downside_vertices[i_next];
+            let right_top = self.halfedge_start_vertex_id(next_halfedge_id).unwrap();
+            let left_top = self.halfedge_start_vertex_id(halfedge_id).unwrap();
+            added_halfedges.push((self.add_halfedge(), left_bottom));
+            added_halfedges.push((self.add_halfedge(), right_bottom));
+            added_halfedges.push((self.add_halfedge(), right_top));
+            added_halfedges.push((self.add_halfedge(), left_top));
+            self.add_halfedges_and_vertices(added_halfedges);
+        }
+        if need_fill_downside {
+            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+            for i in 0..halfedges.len() {
+                let j = (halfedges.len() - i) % halfedges.len();
+                added_halfedges.push((downside_halfedges[j], downside_vertices[j]));
+            }
+            self.add_halfedges_and_vertices(added_halfedges);
+        }
+    }
+
+    pub fn extrude_face(&mut self, face_id: Id, normal: Vector3<f32>, amount: f32) {
+        let mut new_halfedges : Vec<Id> = Vec::new();
+        for halfedge_id in FaceHalfedgeIterator::new(self, face_id) {
+            new_halfedges.push(halfedge_id);
+        }
+        self.extrude_halfedges(&new_halfedges, normal, amount);
+    }
+
+    pub fn add_plane(&mut self, width: f32, depth: f32) -> Id {
+        let x = width / 2.0;
+        let y = depth / 2.0;
+        let points = vec![Point3 {x: -x, y: -y, z: 0.0},
+            Point3 {x: x, y: -y, z: 0.0},
+            Point3 {x: x, y: y, z: 0.0},
+            Point3 {x: -x, y: y, z: 0.0}];
+        let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+        for i in 0..points.len() {
+            added_halfedges.push((self.add_halfedge(), self.add_vertex(points[i])));
+        }
+        self.add_halfedges_and_vertices(added_halfedges)
     }
 }

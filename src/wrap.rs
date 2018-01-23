@@ -192,22 +192,11 @@ impl GiftWrapper {
         mesh.remove_face(face1);
         mesh.remove_face(face2);
         for f in self.generated_faces.iter() {
-            let added_face_id = mesh.add_face();
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
-            for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
-                mesh.vertex_mut(added_vertex_id).unwrap().halfedge = added_halfedge_id;
-                mesh.halfedge_mut(added_halfedge_id).unwrap().face = added_face_id;
-                mesh.halfedge_mut(added_halfedge_id).unwrap().vertex = added_vertex_id;
-            }
-            mesh.face_mut(added_face_id).unwrap().halfedge = added_halfedges[0].0;
-            for i in 0..added_halfedges.len() {
-                let first = added_halfedges[i].0;
-                let second = added_halfedges[(i + 1) % added_halfedges.len()].0;
-                mesh.link_halfedges(first, second);
-            }
+            mesh.add_halfedges_and_vertices(added_halfedges);
         }
     }
 }
