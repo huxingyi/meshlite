@@ -13,7 +13,7 @@ impl<'a> Iterator for VertexEdgeIterator<'a> {
 
     fn next(&mut self) -> Option<Id> {
         let id = self.current_id;
-        self.current_id = self.mesh.halfedge(self.mesh.halfedge(self.current_id).unwrap().previous).unwrap().opposite;
+        self.current_id = self.mesh.halfedge(self.mesh.halfedge(self.current_id).unwrap().prev).unwrap().opposite;
         if id == self.stop_id && self.index > 0 {
             return None;
         }
@@ -116,6 +116,10 @@ impl FaceHalfedgeCollection {
             collection.0.push(halfedge_id);
         }
         collection
+    }
+
+    pub fn as_vec(&self) -> &Vec<Id> {
+        &self.0
     }
 }
 
