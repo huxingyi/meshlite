@@ -40,6 +40,23 @@ pub struct SourceVertex {
     pub tag: Id,
 }
 
+#[derive(Hash, Eq, PartialEq, Debug)]
+struct RoundVector3 {
+    round_x: i32,
+    round_y: i32,
+    round_z: i32,
+}
+
+impl RoundVector3 {
+    pub fn new(vec: Vector3<f32>) -> Self {
+        RoundVector3 {
+            round_x: (vec.x * 100.0).round() as i32,
+            round_y: (vec.y * 100.0).round() as i32,
+            round_z: (vec.z * 100.0).round() as i32,
+        }
+    }
+}
+
 pub struct GiftWrapper {
     items: Vec<WrapItem>,
     items_map: HashMap<WrapItemKey, usize>,
@@ -48,6 +65,8 @@ pub struct GiftWrapper {
     pub source_vertices: Vec<SourceVertex>,
     pub generated_faces: Vec<Face3>,
     generated_face_edges_map: HashMap<WrapItemKey, bool>,
+    generated_face_norm_map: HashMap<RoundVector3, Vec<usize>>,
+    generated_vertex_edges_map: HashMap<usize, Vec<usize>>,
 }
 
 impl GiftWrapper {
@@ -60,6 +79,8 @@ impl GiftWrapper {
             candidates: Vec::new(),
             generated_faces: Vec::new(),
             generated_face_edges_map: HashMap::new(),
+            generated_face_norm_map: HashMap::new(),
+            generated_vertex_edges_map: HashMap::new(),
         }
     }
 
@@ -78,14 +99,13 @@ impl GiftWrapper {
     }
 
     fn add_item(&mut self, p1: usize, p2: usize, base_normal: Vector3<f32>) {
-        /*
         {
             let v1 = &self.source_vertices[p1];
             let v2 = &self.source_vertices[p2];
             if !self.items.is_empty() && v1.source_plane == v2.source_plane {
                 return;
             }
-        }*/
+        }
         if !self.find_item(p1, p2).is_none() || !self.find_item(p2, p1).is_none() {
             return;
         }
@@ -95,7 +115,7 @@ impl GiftWrapper {
         let index = self.items.len();
         self.items.push(WrapItem {p3: 0, p1: p1, p2: p2, base_normal: base_normal, processed: false});
         self.items_map.insert(WrapItemKey {p1: p1, p2: p2}, index);
-        self.items_list.push_back(index);
+        self.items_list.push_front(index);
     }
 
     pub fn find_item(&self, p1: usize, p2: usize) -> Option<&usize> {
@@ -104,7 +124,10 @@ impl GiftWrapper {
     }
 
     pub fn add_startup(&mut self, p1: usize, p2: usize, base_normal: Vector3<f32>) {
-        self.add_item(p1, p2, base_normal);
+        if self.items.len() == 0 {
+            self.add_item(p1, p2, base_normal);
+        }
+        self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p1}, true);
     }
 
     fn is_edge_generated(&self, p1: usize, p2: usize) -> bool {
@@ -115,33 +138,20 @@ impl GiftWrapper {
         true
     }
 
-    fn can_make_face(&self, p1: usize, p2: usize, p3: usize) -> bool {
-        let b1 = self.is_edge_generated(p1, p2);
-        let b2 = self.is_edge_generated(p2, p3);
-        let b3 = self.is_edge_generated(p3, p1);
-        if b1 || b2 || b3 {
-            return false;
-        }
-        true
-    }
-
     fn angle_of_base_face_and_point(&self, item_index: usize, vertex_index: usize) -> f32 {
         let item = &self.items[item_index].clone();
+        if item.p1 == vertex_index || item.p2 == vertex_index {
+            return 0.0;
+        }
         let v1 = &self.source_vertices[item.p1].clone();
         let v2 = &self.source_vertices[item.p2].clone();
         let vp = &self.source_vertices[vertex_index].clone();
         if v1.source_plane == v2.source_plane && v1.source_plane == vp.source_plane {
             return 0.0;
         }
-        if !self.find_item(item.p2, vertex_index).is_none() || 
-                !self.find_item(vertex_index, item.p2).is_none() ||
-                !self.find_item(vertex_index, item.p1).is_none() ||
-                !self.find_item(item.p1, vertex_index).is_none() {
-            return 0.0;
-        }
-        let vd1 = self.calculate_face_vector(item.p2, item.p1, item.base_normal);
+        let vd1 = self.calculate_face_vector(item.p1, item.p2, item.base_normal);
         let normal = norm(v2.position, v1.position, vp.position);
-        let vd2 = self.calculate_face_vector(item.p2, item.p1, normal);
+        let vd2 = self.calculate_face_vector(item.p1, item.p2, normal);
         let angle = Deg::from(vd2.angle(vd1));
         angle.0
     }
@@ -149,13 +159,22 @@ impl GiftWrapper {
     fn find_best_vertex_on_the_left(&mut self, item_index: usize) -> Option<usize> {
         let mut max_angle = 0 as f32;
         let mut choosen_it = None;
-        for &it in self.candidates.iter() {
+        let mut rm_vec : Vec<usize> = Vec::new();
+        for (i, &it) in self.candidates.iter().enumerate() {
+            if self.is_vertex_closed(it) {
+                rm_vec.push(i);
+                continue;
+            }
             let mut angle = self.angle_of_base_face_and_point(item_index, it);
             if angle > max_angle {
                 max_angle = angle;
                 choosen_it = Some(it);
             }
         }
+        for &i in rm_vec.iter().rev() {
+            self.candidates.swap_remove(i);
+        }
+        //println!("find_best_vertex_on_the_left angle:{:?}", max_angle);
         choosen_it
     }
 
@@ -168,44 +187,92 @@ impl GiftWrapper {
         None
     }
 
+    fn is_edge_closed(&self, p1: usize, p2: usize) -> bool {
+        self.generated_face_edges_map.contains_key(&WrapItemKey {p1: p1, p2: p2}) &&
+            self.generated_face_edges_map.contains_key(&WrapItemKey {p1: p2, p2: p1})
+    }
+
+    fn is_vertex_closed(&self, vertex_index: usize) -> bool {
+        let map = self.generated_vertex_edges_map.get(&vertex_index);
+        if map.is_none() {
+            return false;
+        }
+        for &other_index in map.unwrap() {
+            if !self.is_edge_closed(vertex_index, other_index) {
+                return false;
+            }
+        }
+        true
+    }
+
     fn generate(&mut self) {
         while let Some(item_index) = self.peek_item() {
             self.items[item_index].processed = true;
+            let p1 = self.items[item_index].p1;
+            let p2 = self.items[item_index].p2;
+            if self.is_edge_closed(p1, p2) {
+                continue;
+            }
             let p3 = self.find_best_vertex_on_the_left(item_index);
             if !p3.is_none() {
-                let p1 = self.items[item_index].p1;
-                let p2 = self.items[item_index].p2;
                 let p3 = p3.unwrap();
-                if self.can_make_face(p1, p2, p3) {
-                    self.items[item_index].p3 = p3;
-                    let base_normal = norm(self.source_vertices[p1].position, 
-                        self.source_vertices[p2].position,
-                        self.source_vertices[p3].position);
-                    self.generated_faces.push(Face3 {p1: p1, p2: p2, p3: p3});
-                    self.generated_face_edges_map.insert(WrapItemKey {p1: p1, p2: p2}, true);
-                    self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p3}, true);
-                    self.generated_face_edges_map.insert(WrapItemKey {p1: p3, p2: p1}, true);
-                    self.add_item(p3, p2, base_normal);
-                    self.add_item(p1, p3, base_normal);
-                }
+                self.items[item_index].p3 = p3;
+                let base_normal = norm(self.source_vertices[p1].position, 
+                    self.source_vertices[p2].position,
+                    self.source_vertices[p3].position);
+                let new_face_index = self.generated_faces.len();
+                //println!("----- new face[{:?}] p1:{:?} p2:{:?} p3:{:?} normal<x:{:?} y:{:?} z:{:?}>", 
+                //    new_face_index, p1, p2, p3, base_normal.x, base_normal.y, base_normal.z);
+                self.generated_faces.push(Face3 {p1: p1, p2: p2, p3: p3});
+                self.add_item(p3, p2, base_normal);
+                self.add_item(p1, p3, base_normal);
+                self.generated_face_norm_map.entry(RoundVector3::new(base_normal)).or_insert(Vec::new()).push(new_face_index);
+                self.generated_face_edges_map.insert(WrapItemKey {p1: p1, p2: p2}, true);
+                self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p3}, true);
+                self.generated_face_edges_map.insert(WrapItemKey {p1: p3, p2: p1}, true);
+                self.generated_vertex_edges_map.entry(p1).or_insert(Vec::new()).push(p2);
+                self.generated_vertex_edges_map.entry(p1).or_insert(Vec::new()).push(p3);
+                self.generated_vertex_edges_map.entry(p2).or_insert(Vec::new()).push(p3);
+                self.generated_vertex_edges_map.entry(p2).or_insert(Vec::new()).push(p1);
+                self.generated_vertex_edges_map.entry(p3).or_insert(Vec::new()).push(p1);
+                self.generated_vertex_edges_map.entry(p3).or_insert(Vec::new()).push(p2);
             }
         }
     }
 
     fn add_candidate_face(&mut self, mesh: &mut Mesh, face_id: Id) {
         let halfedge_collection = FaceHalfedgeCollection::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap());
+        let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
         for &halfedge_id in halfedge_collection.as_vec() {
-            let mut vertex = mesh.halfedge_start_vertex_mut(halfedge_id).unwrap();
-            vertex.index = self.add_source_vertex(vertex.position, face_id, vertex.id);
+            let vertex = mesh.halfedge_start_vertex(halfedge_id).unwrap();
+            vertices_index_set.entry(vertex.id).or_insert(self.add_source_vertex(vertex.position, face_id, vertex.id));
         }
         for &halfedge_id in halfedge_collection.as_vec() {
-            let opposite_id = mesh.halfedge_opposite_id(halfedge_id).unwrap();
-            let opposite_face_id = mesh.halfedge(opposite_id).unwrap().face;
-            let normal = mesh.face_norm(opposite_face_id);
+            let opposite = mesh.halfedge_opposite_id(halfedge_id);
             let halfedge_next_id = mesh.halfedge_next_id(halfedge_id).unwrap();
-            self.add_startup(mesh.halfedge_start_vertex(halfedge_id).unwrap().index,
-                mesh.halfedge_start_vertex(halfedge_next_id).unwrap().index,
-                normal);
+            let next_vertex_id = mesh.halfedge_start_vertex_id(halfedge_next_id).unwrap();
+            let &next_vertex_index = vertices_index_set.get(&next_vertex_id).unwrap();
+            let vertex_id = mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
+            let &vertex_index = vertices_index_set.get(&vertex_id).unwrap();
+            if opposite.is_none() {
+                self.add_startup(next_vertex_index,
+                    vertex_index,
+                    mesh.face_norm(face_id));
+            } else {
+                self.add_startup(vertex_index,
+                    next_vertex_index,
+                    mesh.face_norm(mesh.halfedge(opposite.unwrap()).unwrap().face));
+            }
+        }
+    }
+
+    fn finalize(&mut self, mesh: &mut Mesh) {
+        for f in self.generated_faces.iter() {
+            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
+            mesh.add_halfedges_and_vertices(added_halfedges);
         }
     }
 
@@ -215,12 +282,14 @@ impl GiftWrapper {
         self.generate();
         mesh.remove_face(face1);
         mesh.remove_face(face2);
-        for f in self.generated_faces.iter() {
-            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
-            mesh.add_halfedges_and_vertices(added_halfedges);
+        self.finalize(mesh);
+    }
+
+    pub fn wrap_faces(&mut self, mesh: &mut Mesh, faces: Vec<Id>) {
+        for face_id in faces {
+            self.add_candidate_face(mesh, face_id);
         }
+        self.generate();
+        self.finalize(mesh);
     }
 }

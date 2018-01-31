@@ -1,20 +1,24 @@
 extern crate cgmath;
+extern crate petgraph;
 
 mod mesh;
 mod subdiv;
 mod iterator;
 mod util;
 mod wrap;
+mod bmesh;
 
 use cgmath::Matrix4;
 use cgmath::prelude::*;
 use cgmath::Vector3;
+use cgmath::Point3;
 use cgmath::Deg;
 use cgmath::Rad;
 
 use wrap::GiftWrapper;
 
 use mesh::Mesh;
+use bmesh::Bmesh;
 
 fn cube() -> Mesh {
     let mut m = Mesh::new();
@@ -32,6 +36,7 @@ fn main() {
     //m.extrude_face(face_id, normal, 1.0);
     //m.save_obj("test.obj").expect("save file failed");
 
+    /*
     let mut m1 = cube();
     let v1 = Vector3 {x: 0.0, y: -1.0, z: 0.0};
     let mut mat1 = Matrix4::from_translation(v1);
@@ -52,9 +57,21 @@ fn main() {
     gw.stitch_two_faces(&mut m3, 1, 7);
 
     m3.save_obj("test.obj").expect("save file failed");
+    */
 
     //m.load_obj("/Users/jeremy/Repositories/dust3d/gourd.obj").expect("load file failed");
     //let mut sm = CatmullClarkSubdivider::new(&mut m);
     //sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
     //println!("Mesh debug info: {:?}", m);
+
+    let mut bmesh = Bmesh::new();
+    let node1 = bmesh.add_node(Point3 {x: -1.0, y: 1.5, z: 1.0}, 0.25);
+    let node2 = bmesh.add_node(Point3 {x: 0.0, y: 0.0, z: 0.0}, 0.3);
+    let node3 = bmesh.add_node(Point3 {x: 1.0, y: -1.5, z: -1.0}, 0.5);
+    let node4 = bmesh.add_node(Point3 {x: 1.0, y: 1.5, z: -1.0}, 0.2);
+    bmesh.add_edge(node1, node2);
+    bmesh.add_edge(node2, node3);
+    bmesh.add_edge(node2, node4);
+    let mesh = bmesh.generate_mesh(node2);
+    mesh.save_obj("test.obj").expect("save file failed");
 }

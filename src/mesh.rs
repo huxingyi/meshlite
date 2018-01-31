@@ -15,6 +15,7 @@ use iterator::FaceIterator;
 use iterator::FaceHalfedgeCollection;
 use util::*;
 use std::ops::Add;
+use std::ops::AddAssign;
 
 pub type Id = usize;
 
@@ -22,7 +23,6 @@ pub type Id = usize;
 pub struct Vertex {
     pub id: Id,
     pub position: Point3<f32>,
-    pub index: usize,
     pub halfedge: Id,
     pub prev: Id,
     pub next: Id,
@@ -358,7 +358,6 @@ impl Mesh {
             prev: 0,
             next: 0,
             position : position,
-            index: 0,
             alive: true,
         });
         new_id
@@ -610,5 +609,11 @@ impl Add for Mesh {
         new_mesh.add_mesh(&self);
         new_mesh.add_mesh(&other);
         new_mesh
+    }
+}
+
+impl AddAssign for Mesh {
+    fn add_assign(&mut self, other: Mesh) {
+        self.add_mesh(&other);
     }
 }
