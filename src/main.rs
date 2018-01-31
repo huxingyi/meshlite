@@ -29,6 +29,12 @@ fn cube() -> Mesh {
     m
 }
 
+fn plane() -> Mesh {
+    let mut m = Mesh::new();
+    let face_id = m.add_plane(1.0, 1.0);
+    m
+}
+
 fn main() {
     //let mut m = Mesh::new();
     //let face_id = m.add_plane(2.0, 1.0);
@@ -44,7 +50,7 @@ fn main() {
     mat1 = mat1 * matr;
     m1.transform(&mat1);
 
-    let mut m2 = cube();
+    let mut m2 = plane();
     let v2 = Vector3 {x: 0.0, y: 2.0, z: 0.0};
     let mut mat2 = Matrix4::from_translation(v2);
     let matr = Matrix4::from_angle_x(Rad::from(Deg(90.0)));
@@ -63,6 +69,7 @@ fn main() {
     //let mut sm = CatmullClarkSubdivider::new(&mut m);
     //sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
     //println!("Mesh debug info: {:?}", m);
+
 
     let mut bmesh = Bmesh::new();
     let node1 = bmesh.add_node(Point3 {x: -1.0, y: 1.5, z: 1.0}, 0.25);

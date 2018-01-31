@@ -23,7 +23,7 @@ struct Face4 {
 }
 
 struct Edge {
-    cuts: HashMap<NodeIndex, Face4>,
+    cuts: Vec<Id>,
 }
 
 pub struct Bmesh {
@@ -76,43 +76,50 @@ impl Bmesh {
         self.graph.node_weight_mut(node_index).unwrap().generated = true;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
-        let mut new_faces : Vec<(EdgeIndex, Face4)> = Vec::new();
+        let mut new_faces : Vec<(EdgeIndex, Id)> = Vec::new();
         let mut new_indices : Vec<NodeIndex> = Vec::new();
         {
             let neighbors = self.graph.neighbors_undirected(node_index);
-            let mut node_around_mesh = Mesh::new();
             let mut added_faces = Vec::new();
             for other_index in neighbors {
                 let direct = self.direct_of_nodes(node_index, other_index);
                 let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
                 let face = self.make_cut(node_position, direct, node_radius);
                 let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-                added_halfedges.push((node_around_mesh.add_halfedge(), node_around_mesh.add_vertex(face.a)));
-                added_halfedges.push((node_around_mesh.add_halfedge(), node_around_mesh.add_vertex(face.b)));
-                added_halfedges.push((node_around_mesh.add_halfedge(), node_around_mesh.add_vertex(face.c)));
-                added_halfedges.push((node_around_mesh.add_halfedge(), node_around_mesh.add_vertex(face.d)));
-                let new_face_id = node_around_mesh.add_halfedges_and_vertices(added_halfedges);
+                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.a)));
+                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.b)));
+                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.c)));
+                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.d)));
+                let new_face_id = self.mesh.add_halfedges_and_vertices(added_halfedges);
                 added_faces.push(new_face_id);
-                new_faces.push((edge_index, face));
+                new_faces.push((edge_index, new_face_id));
                 new_indices.push(other_index);
             }
             if added_faces.len() > 1 {
                 let mut wrapper = GiftWrapper::new();
-                wrapper.wrap_faces(&mut node_around_mesh, added_faces);
-                self.mesh += node_around_mesh;
+                wrapper.wrap_faces(&mut self.mesh, &added_faces);
             }
         }
-        for (edge_index, face) in new_faces {
+        for (edge_index, face_id) in new_faces {
             let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
-            edge.cuts.insert(node_index, face);
+            edge.cuts.push(face_id);
         }
         for other_index in new_indices {
             self.generate_from_node(other_index);
         }
     }
 
+    fn stitch_by_edges(&mut self) {
+        for edge in self.graph.edge_weights_mut() {
+            assert!(edge.cuts.len() == 2);
+            let mut wrapper = GiftWrapper::new();
+            wrapper.stitch_two_faces(&mut self.mesh, edge.cuts[0], edge.cuts[1]);
+        }
+    }
+
     pub fn generate_mesh(&mut self, root: usize) -> &Mesh {
         self.generate_from_node(NodeIndex::new(root));
+        self.stitch_by_edges();
         &self.mesh
     }
 }
@@ -130,7 +137,7 @@ impl Node {
 impl Edge {
     fn new() -> Self {
         Edge {
-            cuts: HashMap::new(),
+            cuts: Vec::new(),
         }
     }
 }

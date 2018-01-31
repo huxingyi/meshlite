@@ -248,21 +248,14 @@ impl GiftWrapper {
             vertices_index_set.entry(vertex.id).or_insert(self.add_source_vertex(vertex.position, face_id, vertex.id));
         }
         for &halfedge_id in halfedge_collection.as_vec() {
-            let opposite = mesh.halfedge_opposite_id(halfedge_id);
             let halfedge_next_id = mesh.halfedge_next_id(halfedge_id).unwrap();
             let next_vertex_id = mesh.halfedge_start_vertex_id(halfedge_next_id).unwrap();
             let &next_vertex_index = vertices_index_set.get(&next_vertex_id).unwrap();
             let vertex_id = mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
             let &vertex_index = vertices_index_set.get(&vertex_id).unwrap();
-            if opposite.is_none() {
-                self.add_startup(next_vertex_index,
-                    vertex_index,
-                    mesh.face_norm(face_id));
-            } else {
-                self.add_startup(vertex_index,
-                    next_vertex_index,
-                    mesh.face_norm(mesh.halfedge(opposite.unwrap()).unwrap().face));
-            }
+            self.add_startup(next_vertex_index,
+                vertex_index,
+                mesh.face_norm(face_id));
         }
     }
 
@@ -277,16 +270,24 @@ impl GiftWrapper {
     }
 
     pub fn stitch_two_faces(&mut self, mesh: &mut Mesh, face1: Id, face2: Id) {
+        let mut remove_faces = Vec::new();
         self.add_candidate_face(mesh, face1);
+        if !mesh.face_adj_id(face1).is_none() {
+            remove_faces.push(face1);
+        }
         self.add_candidate_face(mesh, face2);
+        if !mesh.face_adj_id(face2).is_none() {
+            remove_faces.push(face2);
+        }
         self.generate();
-        mesh.remove_face(face1);
-        mesh.remove_face(face2);
+        for face_id in remove_faces {
+            mesh.remove_face(face_id);
+        }
         self.finalize(mesh);
     }
 
-    pub fn wrap_faces(&mut self, mesh: &mut Mesh, faces: Vec<Id>) {
-        for face_id in faces {
+    pub fn wrap_faces(&mut self, mesh: &mut Mesh, faces: &Vec<Id>) {
+        for &face_id in faces {
             self.add_candidate_face(mesh, face_id);
         }
         self.generate();

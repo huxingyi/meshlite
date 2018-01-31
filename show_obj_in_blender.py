@@ -12,10 +12,15 @@ def select_mesh():
         else:
             o.select = False
 
+def make_transparent():
+    for area in bpy.context.screen.areas:
+        if area.type == 'VIEW_3D':
+            area.spaces.active.use_occlude_geometry = False
+
 bpy.context.user_preferences.view.show_splash = False
 select_mesh()
 bpy.ops.object.delete()
 bpy.ops.import_scene.obj(filepath=sys.argv[-1])
 select_mesh()
 bpy.ops.object.mode_set(mode='EDIT')
-
+make_transparent()
