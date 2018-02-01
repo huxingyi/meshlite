@@ -117,10 +117,10 @@ impl Bmesh {
         }
     }
 
-    pub fn generate_mesh(&mut self, root: usize) -> &Mesh {
+    pub fn generate_mesh(&mut self, root: usize) -> &mut Mesh {
         self.generate_from_node(NodeIndex::new(root));
         self.stitch_by_edges();
-        &self.mesh
+        &mut self.mesh
     }
 }
 

@@ -16,6 +16,7 @@ use cgmath::Deg;
 use cgmath::Rad;
 
 use wrap::GiftWrapper;
+use subdiv::CatmullClarkSubdivider;
 
 use mesh::Mesh;
 use bmesh::Bmesh;
@@ -79,6 +80,9 @@ fn main() {
     bmesh.add_edge(node1, node2);
     bmesh.add_edge(node2, node3);
     bmesh.add_edge(node2, node4);
-    let mesh = bmesh.generate_mesh(node2);
-    mesh.save_obj("test.obj").expect("save file failed");
+    let mut mesh = bmesh.generate_mesh(node2);
+    //mesh.save_obj("test.obj").expect("save file failed");
+
+    let mut sm = CatmullClarkSubdivider::new(&mut mesh);
+    sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
 }
