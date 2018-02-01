@@ -10,3 +10,9 @@ pub fn norm(p1: Point3<f32>, p2: Point3<f32>, p3: Point3<f32>) -> Vector3<f32> {
     perp.normalize();
     perp
 }
+
+pub fn almost_eq(v1: Vector3<f32>, v2: Vector3<f32>) -> bool {
+    (v1.x - v2.x).abs() <= 0.01 &&
+        (v1.y - v2.y).abs() <= 0.01 &&
+        (v1.z - v2.z).abs() <= 0.01
+}

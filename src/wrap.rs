@@ -30,6 +30,14 @@ pub struct Face3 {
     pub p1: usize,
     pub p2: usize,
     pub p3: usize,
+    pub norm: Vector3<f32>,
+}
+
+pub struct Face4 {
+    pub p1: usize,
+    pub p2: usize,
+    pub p3: usize,
+    pub p4: usize,
 }
 
 #[derive(Clone)]
@@ -40,23 +48,6 @@ pub struct SourceVertex {
     pub tag: Id,
 }
 
-#[derive(Hash, Eq, PartialEq, Debug)]
-struct RoundVector3 {
-    round_x: i32,
-    round_y: i32,
-    round_z: i32,
-}
-
-impl RoundVector3 {
-    pub fn new(vec: Vector3<f32>) -> Self {
-        RoundVector3 {
-            round_x: (vec.x * 100.0).round() as i32,
-            round_y: (vec.y * 100.0).round() as i32,
-            round_z: (vec.z * 100.0).round() as i32,
-        }
-    }
-}
-
 pub struct GiftWrapper {
     items: Vec<WrapItem>,
     items_map: HashMap<WrapItemKey, usize>,
@@ -64,8 +55,7 @@ pub struct GiftWrapper {
     candidates: Vec<usize>,
     pub source_vertices: Vec<SourceVertex>,
     pub generated_faces: Vec<Face3>,
-    generated_face_edges_map: HashMap<WrapItemKey, bool>,
-    generated_face_norm_map: HashMap<RoundVector3, Vec<usize>>,
+    generated_face_edges_map: HashMap<WrapItemKey, Option<usize>>,
     generated_vertex_edges_map: HashMap<usize, Vec<usize>>,
 }
 
@@ -79,7 +69,6 @@ impl GiftWrapper {
             candidates: Vec::new(),
             generated_faces: Vec::new(),
             generated_face_edges_map: HashMap::new(),
-            generated_face_norm_map: HashMap::new(),
             generated_vertex_edges_map: HashMap::new(),
         }
     }
@@ -127,7 +116,7 @@ impl GiftWrapper {
         if self.items.len() == 0 {
             self.add_item(p1, p2, base_normal);
         }
-        self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p1}, true);
+        self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p1}, None);
     }
 
     fn is_edge_generated(&self, p1: usize, p2: usize) -> bool {
@@ -220,16 +209,13 @@ impl GiftWrapper {
                 let base_normal = norm(self.source_vertices[p1].position, 
                     self.source_vertices[p2].position,
                     self.source_vertices[p3].position);
-                let new_face_index = self.generated_faces.len();
-                //println!("----- new face[{:?}] p1:{:?} p2:{:?} p3:{:?} normal<x:{:?} y:{:?} z:{:?}>", 
-                //    new_face_index, p1, p2, p3, base_normal.x, base_normal.y, base_normal.z);
-                self.generated_faces.push(Face3 {p1: p1, p2: p2, p3: p3});
+                let face_index = self.generated_faces.len();
+                self.generated_faces.push(Face3 {p1: p1, p2: p2, p3: p3, norm: base_normal});
                 self.add_item(p3, p2, base_normal);
                 self.add_item(p1, p3, base_normal);
-                self.generated_face_norm_map.entry(RoundVector3::new(base_normal)).or_insert(Vec::new()).push(new_face_index);
-                self.generated_face_edges_map.insert(WrapItemKey {p1: p1, p2: p2}, true);
-                self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p3}, true);
-                self.generated_face_edges_map.insert(WrapItemKey {p1: p3, p2: p1}, true);
+                self.generated_face_edges_map.insert(WrapItemKey {p1: p1, p2: p2}, Some(face_index));
+                self.generated_face_edges_map.insert(WrapItemKey {p1: p2, p2: p3}, Some(face_index));
+                self.generated_face_edges_map.insert(WrapItemKey {p1: p3, p2: p1}, Some(face_index));
                 self.generated_vertex_edges_map.entry(p1).or_insert(Vec::new()).push(p2);
                 self.generated_vertex_edges_map.entry(p1).or_insert(Vec::new()).push(p3);
                 self.generated_vertex_edges_map.entry(p2).or_insert(Vec::new()).push(p3);
@@ -259,12 +245,65 @@ impl GiftWrapper {
         }
     }
 
+    fn another_vertex_index_of_face3(&self, f: &Face3, p1: usize, p2: usize) -> usize {
+        let indices = vec![f.p1, f.p2, f.p3];
+        for index in indices {
+            if index != p1 && index != p2 {
+                return index;
+            }
+        }
+        0
+    }
+
+    fn find_pair_face3(&self, f: &Face3, used_ids: &HashMap<usize, bool>, q: &mut Vec<Face4>) -> Option<usize> {
+        let indices = vec![f.p1, f.p2, f.p3];
+        for i in 0..indices.len() {
+            let next_i = (i + 1) % indices.len();
+            let next_next_i = (i + 2) % indices.len();
+            let paired_face3_id = self.generated_face_edges_map.get(&WrapItemKey {p1: indices[next_i], p2: indices[i]});
+            if !paired_face3_id.is_none() && !paired_face3_id.unwrap().is_none() {
+                let paired_face3_id = paired_face3_id.unwrap().unwrap();
+                if used_ids.contains_key(&paired_face3_id) {
+                    continue;
+                }
+                let paired_face3 = &self.generated_faces[paired_face3_id];
+                if !almost_eq(paired_face3.norm, f.norm) {
+                    continue;
+                }
+                let another_index = self.another_vertex_index_of_face3(paired_face3, indices[next_i], indices[i]);
+                let merged_f = Face4 {p1: indices[i], p2: another_index, p3: indices[next_i], p4: indices[next_next_i]};
+                q.push(merged_f);
+                return Some(paired_face3_id);
+            }
+        }
+        None
+    }
+
     fn finalize(&mut self, mesh: &mut Mesh) {
-        for f in self.generated_faces.iter() {
+        let mut quards : Vec<Face4> = Vec::new();
+        let mut used_ids: HashMap<usize, bool> = HashMap::new();
+        for (i, f) in self.generated_faces.iter().enumerate() {
+            if used_ids.contains_key(&i) {
+                continue;
+            }
+            let paired = self.find_pair_face3(&f, &used_ids, &mut quards);
+            if !paired.is_none() {
+                used_ids.insert(paired.unwrap(), true);
+                continue;
+            }
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
+            mesh.add_halfedges_and_vertices(added_halfedges);
+            used_ids.insert(i, true);
+        }
+        for f in quards.iter() {
+            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
+            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p4].tag));
             mesh.add_halfedges_and_vertices(added_halfedges);
         }
     }
