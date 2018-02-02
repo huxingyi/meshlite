@@ -58,10 +58,17 @@ impl Bmesh {
 
     fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Face4 {
         let world_y_axis = Vector3 {x: 0.0, y: 1.0, z: 0.0};
-        let local_y = world_y_axis.cross(direct);
-        let local_z = local_y.cross(direct);
-        let y = local_y * radius;
-        let z = local_z * radius;
+        let mut local_y = world_y_axis.cross(direct);
+        let mut local_z = local_y.cross(direct);
+        if local_y == Vector3::zero() {
+            local_y = Vector3 {x: 1.0, y: 0.0, z: 0.0};
+        }
+        if local_z == Vector3::zero() {
+            local_z = Vector3 {x: 0.0, y: 0.0, z: 1.0};
+        }
+        println!("local_y: {:?} local_z: {:?} direct: {:?}", local_y, local_z, direct);
+        let y = local_y * radius * 0.6;
+        let z = local_z * radius * 0.6;
         let origin = position + direct * radius;
         Face4 {a: origin - y - z,
             b: origin + y - z,
