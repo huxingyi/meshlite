@@ -5,4 +5,4 @@ authors = ["Xingyi HU <huxingyi@msn.com>"]
 
 [dependencies]
 cgmath = "0.16"
-petgraph = "0.4.11"
+petgraph = "0.4"

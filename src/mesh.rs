@@ -439,13 +439,20 @@ impl Mesh {
         }
         let mut face_iter = FaceIterator::new(self);
         while let Some(face_id) = face_iter.next() {
+            let normal = self.face_norm(face_id);
+            writeln!(f, "vn {} {} {}", normal.x, normal.y, normal.z)?;
+        }
+        let mut face_iter = FaceIterator::new(self);
+        let mut face_index = 0;
+        while let Some(face_id) = face_iter.next() {
             let face = self.face(face_id).unwrap();
             let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
             write!(f, "f")?;
+            face_index += 1;
             while let Some(halfedge_id) = face_halfedge_iter.next() {
                 let halfedge = self.halfedge(halfedge_id).unwrap();
                 let vertex = self.vertex(halfedge.vertex).unwrap();
-                write!(f, " {}", vertices_index_set.get(&vertex.id).unwrap())?;
+                write!(f, " {}//{}", vertices_index_set.get(&vertex.id).unwrap(), face_index)?;
             }
             writeln!(f, "")?;
         }

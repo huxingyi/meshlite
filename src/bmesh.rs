@@ -63,10 +63,10 @@ impl Bmesh {
         let y = local_y * radius;
         let z = local_z * radius;
         let origin = position + direct * radius;
-        Face4 {a: origin - y + z,
-            b: origin + y + z,
-            c: origin + y - z,
-            d: origin - y - z}
+        Face4 {a: origin - y - z,
+            b: origin + y - z,
+            c: origin + y + z,
+            d: origin - y + z}
     }
 
     fn generate_from_node(&mut self, node_index: NodeIndex) {

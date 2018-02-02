@@ -71,7 +71,6 @@ fn main() {
     //sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
     //println!("Mesh debug info: {:?}", m);
 
-
     let mut bmesh = Bmesh::new();
     let node1 = bmesh.add_node(Point3 {x: -1.0, y: 1.5, z: 1.0}, 0.25);
     let node2 = bmesh.add_node(Point3 {x: 0.0, y: 0.0, z: 0.0}, 0.3);
@@ -86,3 +85,4 @@ fn main() {
     let mut sm = CatmullClarkSubdivider::new(&mut mesh);
     sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
 }
+

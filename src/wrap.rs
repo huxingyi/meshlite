@@ -31,6 +31,7 @@ pub struct Face3 {
     pub p2: usize,
     pub p3: usize,
     pub norm: Vector3<f32>,
+    pub index: usize,
 }
 
 pub struct Face4 {
@@ -210,7 +211,7 @@ impl GiftWrapper {
                     self.source_vertices[p2].position,
                     self.source_vertices[p3].position);
                 let face_index = self.generated_faces.len();
-                self.generated_faces.push(Face3 {p1: p1, p2: p2, p3: p3, norm: base_normal});
+                self.generated_faces.push(Face3 {p1: p1, p2: p2, p3: p3, norm: base_normal, index: face_index});
                 self.add_item(p3, p2, base_normal);
                 self.add_item(p1, p3, base_normal);
                 self.generated_face_edges_map.insert(WrapItemKey {p1: p1, p2: p2}, Some(face_index));
@@ -226,7 +227,7 @@ impl GiftWrapper {
         }
     }
 
-    fn add_candidate_face(&mut self, mesh: &mut Mesh, face_id: Id) {
+    fn add_candidate_face(&mut self, mesh: &mut Mesh, face_id: Id, reverse: bool) {
         let halfedge_collection = FaceHalfedgeCollection::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap());
         let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
         for &halfedge_id in halfedge_collection.as_vec() {
@@ -239,9 +240,15 @@ impl GiftWrapper {
             let &next_vertex_index = vertices_index_set.get(&next_vertex_id).unwrap();
             let vertex_id = mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
             let &vertex_index = vertices_index_set.get(&vertex_id).unwrap();
-            self.add_startup(next_vertex_index,
-                vertex_index,
-                mesh.face_norm(face_id));
+            if reverse {
+                self.add_startup(vertex_index,
+                    next_vertex_index,
+                    -mesh.face_norm(face_id));
+            } else {
+                self.add_startup(next_vertex_index,
+                    vertex_index,
+                    mesh.face_norm(face_id));
+            }
         }
     }
 
@@ -282,10 +289,11 @@ impl GiftWrapper {
     fn finalize(&mut self, mesh: &mut Mesh) {
         let mut quards : Vec<Face4> = Vec::new();
         let mut used_ids: HashMap<usize, bool> = HashMap::new();
-        for (i, f) in self.generated_faces.iter().enumerate() {
-            if used_ids.contains_key(&i) {
+        for f in self.generated_faces.iter() {
+            if used_ids.contains_key(&f.index) {
                 continue;
             }
+            used_ids.insert(f.index, true);
             let paired = self.find_pair_face3(&f, &used_ids, &mut quards);
             if !paired.is_none() {
                 used_ids.insert(paired.unwrap(), true);
@@ -296,7 +304,6 @@ impl GiftWrapper {
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
             added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
             mesh.add_halfedges_and_vertices(added_halfedges);
-            used_ids.insert(i, true);
         }
         for f in quards.iter() {
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
@@ -310,11 +317,11 @@ impl GiftWrapper {
 
     pub fn stitch_two_faces(&mut self, mesh: &mut Mesh, face1: Id, face2: Id) {
         let mut remove_faces = Vec::new();
-        self.add_candidate_face(mesh, face1);
+        self.add_candidate_face(mesh, face1, false);
         if !mesh.face_adj_id(face1).is_none() {
             remove_faces.push(face1);
         }
-        self.add_candidate_face(mesh, face2);
+        self.add_candidate_face(mesh, face2, false);
         if !mesh.face_adj_id(face2).is_none() {
             remove_faces.push(face2);
         }
@@ -327,7 +334,7 @@ impl GiftWrapper {
 
     pub fn wrap_faces(&mut self, mesh: &mut Mesh, faces: &Vec<Id>) {
         for &face_id in faces {
-            self.add_candidate_face(mesh, face_id);
+            self.add_candidate_face(mesh, face_id, true);
         }
         self.generate();
         self.finalize(mesh);
