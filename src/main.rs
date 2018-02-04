@@ -91,6 +91,7 @@ fn main() {
     let node6 = bmesh.add_node(Point3 {x: 0.01726, y: -0.88224, z: -2.87471}, 0.2);
     let node7 = bmesh.add_node(Point3 {x: 0.0, y: -2.0, z: 0.00}, 0.2);
     let node8 = bmesh.add_node(Point3 {x: -0.3, y: -2.8, z: 0.13}, 0.5);
+    let node9 = bmesh.add_node(Point3 {x: -0.3, y: -3.8, z: 1.13}, 0.6);
     bmesh.add_edge(node0, node2);
     bmesh.add_edge(node2, node4);
     bmesh.add_edge(node4, node3);
@@ -99,6 +100,7 @@ fn main() {
     bmesh.add_edge(node5, node6);
     bmesh.add_edge(node4, node7);
     bmesh.add_edge(node7, node8);
+    bmesh.add_edge(node8, node9);
     let mut mesh = bmesh.generate_mesh(node4);
     mesh.save_obj("test.obj").expect("save file failed");
 

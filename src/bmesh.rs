@@ -8,6 +8,7 @@ use petgraph::prelude::*;
 use petgraph::Graph;
 use std::collections::HashMap;
 use wrap::GiftWrapper;
+use util::*;
 
 struct Node {
     radius: f32,
@@ -58,22 +59,29 @@ impl Bmesh {
 
     fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Face4 {
         let world_y_axis = Vector3 {x: 0.0, y: 1.0, z: 0.0};
-        let mut local_y = world_y_axis.cross(direct);
-        let mut local_z = local_y.cross(direct);
-        if local_y == Vector3::zero() {
-            local_y = Vector3 {x: 1.0, y: 0.0, z: 0.0};
+        let mut u = world_y_axis.cross(direct);
+        let mut v = u.cross(direct);
+        if u == Vector3::zero() {
+            u = Vector3 {x: 1.0, y: 0.0, z: 0.0};
         }
-        if local_z == Vector3::zero() {
-            local_z = Vector3 {x: 0.0, y: 0.0, z: 1.0};
+        if v == Vector3::zero() {
+            v = Vector3 {x: 0.0, y: 0.0, z: 1.0};
         }
-        println!("local_y: {:?} local_z: {:?} direct: {:?}", local_y, local_z, direct);
-        let y = local_y * radius * 0.6;
-        let z = local_z * radius * 0.6;
+        println!("u: {:?} v: {:?} direct: {:?}", u, v, direct);
+        let u = u * radius * 0.6;
+        let v = v * radius * 0.6;
         let origin = position + direct * radius;
-        Face4 {a: origin - y - z,
-            b: origin + y - z,
-            c: origin + y + z,
-            d: origin - y + z}
+        let mut f = Face4 {a: origin - u - v,
+            b: origin + u - v,
+            c: origin + u + v,
+            d: origin - u + v};
+        if direct.cross(norm(f.a, f.b, f.c)) == Vector3::zero() {
+            f = Face4 {a: origin - u + v,
+                b: origin + u + v,
+                c: origin + u - v,
+                d: origin - u - v};
+        }
+        f
     }
 
     fn generate_from_node(&mut self, node_index: NodeIndex) {
