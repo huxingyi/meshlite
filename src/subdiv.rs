@@ -12,6 +12,7 @@ use iterator::FaceCollection;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceHalfedgeCollection;
 use iterator::VertexEdgeIterator;
+use std::mem;
 
 struct FaceData {
     average_of_points: Point3<f32>,
@@ -145,9 +146,13 @@ impl<'a> CatmullClarkSubdivider<'a> {
             data.generated_vertex_id = generated_vertex_id;
             Box::new(data)
         })
-    } 
+    }
 
-    pub fn generated_mesh_mut(&mut self) ->&mut Mesh {
+    pub fn generate(&mut self) -> Mesh {
+        mem::replace(&mut self.generated_mesh_mut(), Mesh::new())
+    }
+
+    fn generated_mesh_mut(&mut self) ->&mut Mesh {
         if self.finished {
             return &mut self.generated_mesh;
         }

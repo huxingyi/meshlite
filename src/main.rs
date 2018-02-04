@@ -104,7 +104,7 @@ fn main() {
     let mut mesh = bmesh.generate_mesh(node4);
     mesh.save_obj("test.obj").expect("save file failed");
 
-    //let mut sm = CatmullClarkSubdivider::new(&mut mesh);
-    //sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
+    let mut cc = CatmullClarkSubdivider::new(&mut mesh);
+    cc.generate().save_obj("test.obj").expect("save file failed");
 }
 
