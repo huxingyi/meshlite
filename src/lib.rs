@@ -2,11 +2,12 @@ extern crate cgmath;
 extern crate petgraph;
 
 mod mesh;
-mod subdiv;
+mod subdivide;
 mod iterator;
 mod util;
 mod wrap;
 mod bmesh;
+mod triangulate;
 
 use std::ffi::CStr;
 use std::os::raw::{c_int, c_uint, c_char};
@@ -14,7 +15,7 @@ use mesh::Mesh;
 
 use std::collections::HashMap;
 
-use subdiv::CatmullClarkSubdivider;
+use subdivide::CatmullClarkSubdivider;
 
 #[repr(C)]
 pub struct RustContext {
@@ -24,15 +25,12 @@ pub struct RustContext {
 }
 
 fn alloc_mesh_id(ctx: &mut RustContext) -> i32 {
-    let mut id = 0;
     if ctx.free_mesh_ids.len() > 0 {
-        id = ctx.free_mesh_ids[0];
-        ctx.free_mesh_ids.swap_remove(0);
+        ctx.free_mesh_ids.swap_remove(0)
     } else {
         ctx.meshes.push(Mesh::new());
-        id = ctx.meshes.len() as i32;
+        ctx.meshes.len() as i32
     }
-    id
 }
 
 fn free_mesh_id(ctx: &mut RustContext, id: i32) {
@@ -60,13 +58,20 @@ pub extern "C" fn meshlite_subdivide_mesh(context: *mut RustContext, mesh_id: c_
         &mut *context
     };
     assert_eq!(ctx.magic, 12345678);
-    let new_mesh = {
-        let mut mesh = ctx.meshes.get_mut((mesh_id - 1) as usize).unwrap();
-        let mut cc = CatmullClarkSubdivider::new(&mut mesh);
-        cc.generate()
-    };
+    if loops <= 0 {
+        return 0;
+    }
     let new_mesh_id = alloc_mesh_id(ctx);
-    ctx.meshes[(new_mesh_id - 1) as usize] = new_mesh;
+    let mut old_mesh_id = mesh_id;
+    for i in 0..loops {
+        let new_mesh = {
+            let mut mesh = ctx.meshes.get_mut((old_mesh_id - 1) as usize).unwrap();
+            let mut cc = CatmullClarkSubdivider::new(&mut mesh);
+            cc.generate()
+        };
+        ctx.meshes[(new_mesh_id - 1) as usize] = new_mesh;
+        old_mesh_id = new_mesh_id;
+    }
     new_mesh_id
 }
 

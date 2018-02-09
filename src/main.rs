@@ -2,11 +2,12 @@ extern crate cgmath;
 extern crate petgraph;
 
 mod mesh;
-mod subdiv;
+mod subdivide;
 mod iterator;
 mod util;
 mod wrap;
 mod bmesh;
+mod triangulate;
 
 use cgmath::Matrix4;
 use cgmath::prelude::*;
@@ -16,7 +17,8 @@ use cgmath::Deg;
 use cgmath::Rad;
 
 use wrap::GiftWrapper;
-use subdiv::CatmullClarkSubdivider;
+use subdivide::CatmullClarkSubdivider;
+use triangulate::Triangulate;
 
 use mesh::Mesh;
 use bmesh::Bmesh;
@@ -105,6 +107,8 @@ fn main() {
     mesh.save_obj("test.obj").expect("save file failed");
 
     let mut cc = CatmullClarkSubdivider::new(&mut mesh);
-    cc.generate().save_obj("test.obj").expect("save file failed");
+    //cc.generate().save_obj("test.obj").expect("save file failed");
+
+    cc.generate().triangulate().save_obj("test.obj").expect("save file failed");
 }
 
