@@ -55,7 +55,7 @@ impl VertexData {
 }
 
 pub struct CatmullClarkSubdivider<'a> {
-    mesh: &'a mut Mesh,
+    mesh: &'a Mesh,
     face_data_set: HashMap<Id, Box<FaceData>>,
     edge_data_set: HashMap<Id, Box<EdgeData>>,
     vertex_data_set: HashMap<Id, Box<VertexData>>,
@@ -64,7 +64,7 @@ pub struct CatmullClarkSubdivider<'a> {
 }
 
 impl<'a> CatmullClarkSubdivider<'a> {
-    pub fn new(mesh: &'a mut Mesh) -> Self {
+    pub fn new(mesh: &'a Mesh) -> Self {
         CatmullClarkSubdivider {
             mesh: mesh,
             face_data_set: HashMap::new(),
@@ -195,3 +195,13 @@ impl<'a> CatmullClarkSubdivider<'a> {
     }
 }
 
+pub trait Subdivide {
+    fn subdivide(&self) -> Self;
+}
+
+impl Subdivide for Mesh {
+    fn subdivide(&self) -> Self {
+        let mut cc = CatmullClarkSubdivider::new(self);
+        cc.generate()
+    }
+}
