@@ -12,7 +12,6 @@ use std::vec::Vec;
 use std::collections::HashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
-use iterator::FaceHalfedgeCollection;
 use util::*;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -289,9 +288,9 @@ impl Mesh {
     }
 
     pub fn remove_face(&mut self, id: Id) {
-        let halfedge_collection = FaceHalfedgeCollection::new(self, self.face_first_halfedge_id(id).unwrap());
-        self.remove_halfedges_from_edges(halfedge_collection.as_vec());
-        for halfedge_id in halfedge_collection.into_iter() {
+        let halfedge_collection = FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(id).unwrap()).into_vec();
+        self.remove_halfedges_from_edges(&halfedge_collection);
+        for halfedge_id in halfedge_collection {
             let vertex_id = self.halfedge_start_vertex_id(halfedge_id).unwrap();
             let opposite = self.halfedge_opposite_id(halfedge_id);
             if !opposite.is_none() {
@@ -411,81 +410,6 @@ impl Mesh {
             alive: true,
         });
         new_id
-    }
-
-    pub fn save_obj(&self, filename: &str) -> io::Result<()> {
-        let mut f = File::create(filename)?;
-        let mut i = 0;
-        let mut vertices = Vec::new();
-        let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
-        {
-            let mut face_iter = FaceIterator::new(self);
-            while let Some(face_id) = face_iter.next() {
-                let face = self.face(face_id).unwrap();
-                let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
-                while let Some(halfedge_id) = face_halfedge_iter.next() {
-                    let halfedge = self.halfedge(halfedge_id).unwrap();
-                    vertices.push(halfedge.vertex);
-                }
-            }
-        }
-        for vertex_id in vertices {
-            if vertices_index_set.get(&vertex_id).is_none() {
-                i += 1;
-                vertices_index_set.insert(vertex_id, i);
-                let vertex = self.vertex(vertex_id).unwrap();
-                writeln!(f, "v {} {} {}", vertex.position.x, vertex.position.y, vertex.position.z)?;
-            }
-        }
-        let mut face_iter = FaceIterator::new(self);
-        while let Some(face_id) = face_iter.next() {
-            let normal = self.face_norm(face_id);
-            writeln!(f, "vn {} {} {}", normal.x, normal.y, normal.z)?;
-        }
-        let mut face_iter = FaceIterator::new(self);
-        let mut face_index = 0;
-        while let Some(face_id) = face_iter.next() {
-            let face = self.face(face_id).unwrap();
-            let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
-            write!(f, "f")?;
-            face_index += 1;
-            while let Some(halfedge_id) = face_halfedge_iter.next() {
-                let halfedge = self.halfedge(halfedge_id).unwrap();
-                let vertex = self.vertex(halfedge.vertex).unwrap();
-                write!(f, " {}//{}", vertices_index_set.get(&vertex.id).unwrap(), face_index)?;
-            }
-            writeln!(f, "")?;
-        }
-        Ok(())
-    }
-
-    pub fn load_obj(&mut self, filename: &str) -> io::Result<()> {
-        let mut f = File::open(filename)?;
-        let mut contents = String::new();
-        f.read_to_string(&mut contents)?;
-        let lines = contents.lines();
-        let mut vertex_array = Vec::new();
-        for line in lines {
-            let mut words = line.split_whitespace().filter(|s| !s.is_empty());
-            match words.next() {
-                Some("v") => {
-                    let (x, y, z) = (f32::from_str(words.next().unwrap()).unwrap(),
-                        f32::from_str(words.next().unwrap()).unwrap(),
-                        f32::from_str(words.next().unwrap()).unwrap());
-                    vertex_array.push(self.add_vertex(Point3::new(x, y, z)));
-                },
-                Some("f") => {
-                    let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-                    while let Some(index_str) = words.next() {
-                        let index = usize::from_str(index_str).unwrap() - 1;
-                        added_halfedges.push((self.add_halfedge(), vertex_array[index]));
-                    }
-                    self.add_halfedges_and_vertices(added_halfedges);
-                },
-                _ => ()
-            }
-        }
-        Ok(())
     }
 
     pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
@@ -623,4 +547,12 @@ impl AddAssign for Mesh {
     fn add_assign(&mut self, other: Mesh) {
         self.add_mesh(&other);
     }
+}
+
+pub trait Export {
+    fn export(&self, filename: &str) -> io::Result<()>;
+}
+
+pub trait Import {
+    fn import(&mut self, filename: &str) -> io::Result<()>;
 }

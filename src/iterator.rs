@@ -31,27 +31,13 @@ impl<'a> VertexEdgeIterator<'a> {
             mesh: mesh,
         }
     }
-}
 
-pub struct VertexEdgeCollection(Vec<Id>);
-
-impl VertexEdgeCollection {
-    pub fn new(mesh: &Mesh, start_id: Id) -> VertexEdgeCollection {
-        let mut halfedge_iter = VertexEdgeIterator::new(mesh, start_id);
-        let mut collection = VertexEdgeCollection(Vec::new());
-        while let Some(face_id) = halfedge_iter.next() {
-            collection.0.push(face_id);
+    pub fn into_vec(self) -> Vec<Id> {
+        let mut vec = Vec::new();
+        for id in self {
+            vec.push(id);
         }
-        collection
-    }
-}
-
-impl IntoIterator for VertexEdgeCollection {
-    type Item = Id;
-    type IntoIter = ::std::vec::IntoIter<Id>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        vec
     }
 }
 
@@ -82,53 +68,13 @@ impl<'a> FaceIterator<'a> {
             mesh: mesh,
         }
     }
-}
 
-pub struct FaceCollection(Vec<Id>);
-
-impl FaceCollection {
-    pub fn new(mesh: &Mesh) -> FaceCollection {
-        let mut face_iter = FaceIterator::new(mesh);
-        let mut collection = FaceCollection(Vec::new());
-        while let Some(face_id) = face_iter.next() {
-            collection.0.push(face_id);
+    pub fn into_vec(self) -> Vec<Id> {
+        let mut vec = Vec::new();
+        for id in self {
+            vec.push(id);
         }
-        collection
-    }
-}
-
-impl IntoIterator for FaceCollection {
-    type Item = Id;
-    type IntoIter = ::std::vec::IntoIter<Id>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-pub struct FaceHalfedgeCollection(Vec<Id>);
-
-impl FaceHalfedgeCollection {
-    pub fn new(mesh: &Mesh, start_id: Id) -> FaceHalfedgeCollection {
-        let mut edge_iter = FaceHalfedgeIterator::new(mesh, start_id);
-        let mut collection = FaceHalfedgeCollection(Vec::new());
-        while let Some(halfedge_id) = edge_iter.next() {
-            collection.0.push(halfedge_id);
-        }
-        collection
-    }
-
-    pub fn as_vec(&self) -> &Vec<Id> {
-        &self.0
-    }
-}
-
-impl IntoIterator for FaceHalfedgeCollection {
-    type Item = Id;
-    type IntoIter = ::std::vec::IntoIter<Id>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        vec
     }
 }
 
@@ -161,6 +107,14 @@ impl<'a> FaceHalfedgeIterator<'a> {
             index: 0,
             mesh: mesh,
         }
+    }
+
+    pub fn into_vec(self) -> Vec<Id> {
+        let mut vec = Vec::new();
+        for id in self {
+            vec.push(id);
+        }
+        vec
     }
 }
 

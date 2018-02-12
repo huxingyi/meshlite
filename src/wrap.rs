@@ -6,7 +6,6 @@ use cgmath::Deg;
 use std::collections::HashMap;
 use std::collections::LinkedList;
 use iterator::FaceHalfedgeIterator;
-use iterator::FaceHalfedgeCollection;
 use mesh::Id;
 use mesh::Mesh;
 use util::*;
@@ -228,13 +227,12 @@ impl GiftWrapper {
     }
 
     fn add_candidate_face(&mut self, mesh: &mut Mesh, face_id: Id, reverse: bool) {
-        let halfedge_collection = FaceHalfedgeCollection::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap());
         let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
-        for &halfedge_id in halfedge_collection.as_vec() {
+        for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap()) {
             let vertex = mesh.halfedge_start_vertex(halfedge_id).unwrap();
             vertices_index_set.entry(vertex.id).or_insert(self.add_source_vertex(vertex.position, face_id, vertex.id));
         }
-        for &halfedge_id in halfedge_collection.as_vec() {
+        for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap()) {
             let halfedge_next_id = mesh.halfedge_next_id(halfedge_id).unwrap();
             let next_vertex_id = mesh.halfedge_start_vertex_id(halfedge_next_id).unwrap();
             let &next_vertex_index = vertices_index_set.get(&next_vertex_id).unwrap();

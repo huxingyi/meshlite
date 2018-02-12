@@ -8,9 +8,7 @@ use std::ops::Sub;
 use mesh::Mesh;
 use mesh::Id;
 use iterator::FaceIterator;
-use iterator::FaceCollection;
 use iterator::FaceHalfedgeIterator;
-use iterator::FaceHalfedgeCollection;
 use iterator::VertexEdgeIterator;
 use std::mem;
 
@@ -156,12 +154,12 @@ impl<'a> CatmullClarkSubdivider<'a> {
         if self.finished {
             return &mut self.generated_mesh;
         }
-        let mut face_iter = FaceCollection::new(self.mesh).into_iter();
-        while let Some(face_id) = face_iter.next() {
+        let face_id_vec = FaceIterator::new(self.mesh).into_vec();
+        for face_id in face_id_vec {
             let face_vertex_id = self.face_data_mut(face_id).generated_vertex_id;
             let face_halfedge = self.mesh.face(face_id).unwrap().halfedge;
-            let mut face_halfedge_iter = FaceHalfedgeCollection::new(self.mesh, face_halfedge).into_iter();
-            while let Some(halfedge_id) = face_halfedge_iter.next() {
+            let face_halfedge_id_vec = FaceHalfedgeIterator::new(self.mesh, face_halfedge).into_vec();
+            for halfedge_id in face_halfedge_id_vec {
                 let (next_halfedge_id, vertex_id) = {
                     let halfedge = self.mesh.halfedge(halfedge_id).unwrap();
                     let next_halfedge_id = halfedge.next;

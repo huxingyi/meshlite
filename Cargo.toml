@@ -3,10 +3,6 @@ name = "meshlite"
 version = "0.1.0"
 authors = ["Xingyi HU <huxingyi@msn.com>"]
 
-[lib]
-name = "meshlite"
-crate-type = ["cdylib"]
-
 [dependencies]
 cgmath = "0.16"
 petgraph = "0.4"

@@ -8,6 +8,7 @@ mod util;
 mod wrap;
 mod bmesh;
 mod triangulate;
+mod wavefront;
 
 use cgmath::Matrix4;
 use cgmath::prelude::*;
@@ -23,6 +24,9 @@ use subdivide::Subdivide;
 
 use mesh::Mesh;
 use bmesh::Bmesh;
+
+use mesh::Export;
+use mesh::Import;
 
 fn cube() -> Mesh {
     let mut m = Mesh::new();
@@ -105,13 +109,13 @@ fn main() {
     bmesh.add_edge(node7, node8);
     bmesh.add_edge(node8, node9);
     let mut mesh = bmesh.generate_mesh(node4);
-    mesh.save_obj("test.obj").expect("save file failed");
+    //mesh.import("test.obj").expect("save file failed");
 
     //let mut cc = CatmullClarkSubdivider::new(&mut mesh);
     //cc.generate().save_obj("test.obj").expect("save file failed");
 
     //cc.generate().triangulate().save_obj("test.obj").expect("save file failed");
 
-    mesh.subdivide().triangulate().save_obj("test.obj").expect("save file failed");
+    mesh.subdivide().triangulate().export("test.obj").expect("save file failed");
 }
 
