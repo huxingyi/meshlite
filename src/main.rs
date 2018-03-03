@@ -78,7 +78,7 @@ fn main() {
     //sm.generated_mesh_mut().save_obj("test.obj").expect("save file failed");
     //println!("Mesh debug info: {:?}", m);
 
-    let mut bmesh = Bmesh::new();
+    //let mut bmesh = Bmesh::new();
     /*
     let node1 = bmesh.add_node(Point3 {x: -1.0, y: 1.5, z: 1.0}, 0.25);
     let node2 = bmesh.add_node(Point3 {x: 0.0, y: 0.0, z: 0.0}, 0.3);
@@ -89,6 +89,7 @@ fn main() {
     bmesh.add_edge(node2, node4);
     let mut mesh = bmesh.generate_mesh(node2);
     */
+    /*
     let node0 = bmesh.add_node(Point3 {x: -2.07575, y: 1.53902, z: 0.04122}, 0.25);                                    
     let node1 = bmesh.add_node(Point3 {x: 2.40837, y: 2.34882, z: 0.48585}, 0.3);
     let node2 = bmesh.add_node(Point3 {x: -0.91403, y: 0.77069, z: 0.62299}, 0.5);         
@@ -117,5 +118,12 @@ fn main() {
     //cc.generate().triangulate().save_obj("test.obj").expect("save file failed");
 
     mesh.subdivide().triangulate().export("test.obj").expect("save file failed");
+    */
+
+    let mut mesh = cube();
+    let point = Point3 {x: 0.0, y: 0.0, z: 0.5};
+    let norm = Vector3 {x: 0.0, y: 0.0, z: 1.0};
+    let (front_mesh, back_mesh) = mesh.split_mesh_by_plane(point, norm);
+    back_mesh.export("test.obj").expect("save file failed");
 }
 

@@ -50,3 +50,52 @@ pub fn angle360(a: Vector3<f32>, b: Vector3<f32>, direct: Vector3<f32>) -> f32 {
         Deg::from(angle).0
     }
 }
+
+#[derive(PartialEq)]
+pub enum PointSide {
+    Front,
+    Back,
+    Coincident
+}
+
+pub fn point_side_on_plane(pt: Point3<f32>, pt_on_plane: Point3<f32>, norm: Vector3<f32>) -> PointSide {
+    let line = pt_on_plane - pt;
+    let dot = line.dot(norm);
+    if dot > 0.0 {
+        PointSide::Front
+    } else if dot < 0.0 {
+        PointSide::Back
+    } else {
+        PointSide::Coincident
+    }
+}
+
+#[derive(PartialEq)]
+pub enum SegmentPlaneIntersect {
+    NoIntersection,
+    Parallel,
+    LiesIn,
+    Intersection(Point3<f32>),
+}
+
+const SMALL_NUM : f32 = 0.00000001;
+
+// Modfied from the C++ version intersect3D_SegmentPlane
+// http://geomalgorithms.com/a05-_intersect-1.html
+pub fn intersect_of_segment_and_plane(p0: Point3<f32>, p1: Point3<f32>, pt_on_plane: Point3<f32>, norm: Vector3<f32>) -> SegmentPlaneIntersect {
+    let u = p1 - p0;
+    let w = p0 - pt_on_plane;
+    let d = norm.dot(u);
+    let n = -norm.dot(w);
+    if d.abs() < SMALL_NUM {
+        if (n == 0.0) {
+            return SegmentPlaneIntersect::Parallel;
+        }
+        return SegmentPlaneIntersect::NoIntersection;
+    }
+    let s_i = n / d;
+    if s_i < 0.0 || s_i > 1.0 {
+        return SegmentPlaneIntersect::NoIntersection;
+    }
+    SegmentPlaneIntersect::Intersection(p0 + s_i * u)
+}
