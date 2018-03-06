@@ -10,6 +10,7 @@ use std::str::FromStr;
 use std::io;
 use std::vec::Vec;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
 use util::*;
@@ -412,6 +413,26 @@ impl Mesh {
         new_id
     }
 
+    pub fn add_linked_vertices(&mut self, linked_vertices: HashMap<Id, Id>) -> Id {
+        let (&first_id, _) = linked_vertices.iter().next().unwrap();
+        let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+        let mut vert = first_id;
+        added_halfedges.push((self.add_halfedge(), first_id));
+        while linked_vertices.contains_key(&vert) && linked_vertices[&vert] != first_id {
+            vert = linked_vertices[&vert];
+            added_halfedges.push((self.add_halfedge(), vert));
+        }
+        self.add_halfedges_and_vertices(added_halfedges)
+    }
+
+    pub fn add_vertices(&mut self, added_vertices : Vec<Id>) -> Id {
+        let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+        for i in 0..added_vertices.len() {
+            added_halfedges.push((self.add_halfedge(), added_vertices[i]));
+        }
+        self.add_halfedges_and_vertices(added_halfedges)
+    }
+
     pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
         let added_face_id = self.add_face();
         for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
@@ -484,12 +505,13 @@ impl Mesh {
         }
     }
 
-    pub fn extrude_face(&mut self, face_id: Id, normal: Vector3<f32>, amount: f32) {
+    pub fn extrude_face(&mut self, face_id: Id, normal: Vector3<f32>, amount: f32) -> &mut Self {
         let mut new_halfedges : Vec<Id> = Vec::new();
         for halfedge_id in FaceHalfedgeIterator::new(self, face_id) {
             new_halfedges.push(halfedge_id);
         }
         self.extrude_halfedges(&new_halfedges, normal, amount);
+        self
     }
 
     pub fn add_plane(&mut self, width: f32, depth: f32) -> Id {
@@ -506,10 +528,21 @@ impl Mesh {
         self.add_halfedges_and_vertices(added_halfedges)
     }
 
-    pub fn transform(&mut self, mat: &Matrix4<f32>) {
+    pub fn transform(&mut self, mat: &Matrix4<f32>) -> &mut Self {
         for vertex in self.vertices.iter_mut() {
             vertex.position = mat.transform_point(vertex.position);
         }
+        self
+    }
+
+    pub fn translate(&mut self, x: f32, y: f32, z: f32) -> &mut Self {
+        let mat = Matrix4::from_translation(Vector3::new(x, y, z));
+        self.transform(&mat)
+    }
+
+    pub fn scale(&mut self, value: f32) -> &mut Self {
+        let mat = Matrix4::from_scale(value);
+        self.transform(&mat)
     }
 
     pub fn add_mesh(&mut self, other: &Mesh) {
@@ -531,10 +564,60 @@ impl Mesh {
         }
     }
 
-    pub fn split_mesh_by_plane(&self, pt_on_plane: Point3<f32>, norm: Vector3<f32>) -> (Mesh, Mesh) {
-        let mut front_mesh = Mesh::new();
-        let mut back_mesh = Mesh::new();
-        let mut intersect_map : HashMap<EdgeEndpoints, SegmentPlaneIntersect> = HashMap::new();
+    pub fn flip_mesh(&self) -> Mesh {
+        let mut new_mesh = Mesh::new();
+        let mut new_vert_map = HashMap::new();
+        for face_id in FaceIterator::new(self) {
+            let mut verts = Vec::new();
+            for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
+                let old_vert = self.halfedge_start_vertex(halfedge_id).unwrap();
+                let new_vert_id = new_vert_map.entry(old_vert.id).or_insert_with(|| {
+                    new_mesh.add_vertex(old_vert.position)
+                });
+                verts.push(*new_vert_id);
+            }
+            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
+            for new_vert_id in verts.iter().rev() {
+                added_halfedges.push((new_mesh.add_halfedge(), *new_vert_id));
+            }
+            new_mesh.add_halfedges_and_vertices(added_halfedges);
+        }
+        new_mesh
+    }
+
+    pub fn split_mesh_by_other(&self, other: &Mesh) -> (Mesh, Mesh) {
+        let mut inner_mesh = Mesh::new();
+        let mut outter_mesh = Mesh::new();
+        inner_mesh.add_mesh(self);
+        for face_id in FaceIterator::new(other) {
+            let norm = other.face_norm(face_id);
+            let point = other.halfedge_start_vertex(other.face_first_halfedge_id(face_id).unwrap()).unwrap().position;
+            let (sub_front, sub_back) = inner_mesh.split_mesh_by_plane(point, norm);
+            inner_mesh = sub_back;
+            outter_mesh.add_mesh(&sub_front);
+        }
+        (outter_mesh, inner_mesh)
+    }
+
+    pub fn union_mesh(&self, other: &Mesh) -> Mesh {
+        let (other_outter, _) = other.split_mesh_by_other(self);
+        let (my_outter, _) = self.split_mesh_by_other(other);
+        other_outter + my_outter
+    }
+
+    pub fn diff_mesh(&self, other: &Mesh) -> Mesh {
+        let (_, other_inner) =  other.split_mesh_by_other(self);
+        let (my_outter, _) = self.split_mesh_by_other(other);
+        other_inner.flip_mesh() + my_outter
+    }
+
+    pub fn intersect_mesh(&self, other: &Mesh) -> Mesh {
+        let (_, other_inner) =  other.split_mesh_by_other(self);
+        let (_, my_inner) = self.split_mesh_by_other(other);
+        other_inner + my_inner
+    }
+
+    pub fn split_mesh_by_plane(&self, pt_on_plane: Point3<f32>, norm: Vector3<f32>) -> (Mesh, Mesh) { 
         let mut vert_side_map : HashMap<Id, PointSide> = HashMap::new();
         for face_id in FaceIterator::new(self) {
             for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
@@ -542,114 +625,118 @@ impl Mesh {
                 vert_side_map.entry(vert.id).or_insert(point_side_on_plane(vert.position, pt_on_plane, norm));
             }
         }
+        let mut front_mesh = Mesh::new();
+        let mut back_mesh = Mesh::new();
         let mut front_vert_map : HashMap<Id, Id> = HashMap::new();
         let mut back_vert_map : HashMap<Id, Id> = HashMap::new();
+        let mut intersect_map : HashMap<EdgeEndpoints, SegmentPlaneIntersect> = HashMap::new();
         let mut front_intersect_map : HashMap<EdgeEndpoints, Id> = HashMap::new();
         let mut back_intersect_map : HashMap<EdgeEndpoints, Id> = HashMap::new();
-        let mut front_fill_map : HashMap<Id, Id> = HashMap::new();
-        let mut back_fill_map: HashMap<Id, Id> = HashMap::new();
-        let mut front_fill_first = 0;
-        let mut back_fill_first = 0;
+        let mut front_cut_map : HashMap<Id, Id> = HashMap::new();
+        let mut back_cut_map : HashMap<Id, Id> = HashMap::new();
         for face_id in FaceIterator::new(self) {
-            let mut front_added_halfedges : Vec<(Id, Id)> = Vec::new();
-            let mut back_added_halfedges : Vec<(Id, Id)> = Vec::new();
-            let mut front_intersect_verts : Vec<Id> = vec![0, 0];
-            let mut back_intersect_verts : Vec<Id> = vec![0, 0];
+            let mut front_new_verts = Vec::new();
+            let mut back_new_verts = Vec::new();
+            let mut front_new_vert_set = HashSet::new();
+            let mut back_new_vert_set = HashSet::new();
+            let mut front_intersects = vec![0, 0];
+            let mut back_intersects = vec![0, 0];
             for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
                 let from_vert_id = self.halfedge_start_vertex_id(halfedge_id).unwrap();
                 let to_vert_id = self.halfedge_start_vertex_id(self.halfedge_next_id(halfedge_id).unwrap()).unwrap();
+                let from_is_front = vert_side_map[&from_vert_id] != PointSide::Back;
+                let to_is_front = vert_side_map[&to_vert_id] != PointSide::Back;
+                let from_is_back = vert_side_map[&from_vert_id] != PointSide::Front;
+                let to_is_back = vert_side_map[&to_vert_id] != PointSide::Front;
                 let edge = EdgeEndpoints::new(from_vert_id, to_vert_id);
-                let intersect = intersect_map.entry(edge.clone()).or_insert_with(|| {
-                    intersect_of_segment_and_plane(self.halfedge_start_vertex(from_vert_id).unwrap().position,
-                        self.halfedge_start_vertex(to_vert_id).unwrap().position, 
-                        pt_on_plane, 
-                        norm)
-                });
-                let from_side = &vert_side_map[&from_vert_id];
-                if let SegmentPlaneIntersect::Intersection(intersect_pt) = *intersect {
-                    if *from_side == PointSide::Front {
-                        let new_from_id = *front_vert_map.entry(from_vert_id).or_insert_with(|| {
-                            front_mesh.add_vertex(self.vertex(from_vert_id).unwrap().position)
-                        });
-                        let new_from_intersect_id = *front_intersect_map.entry(edge.clone()).or_insert_with(|| {
-                            front_mesh.add_vertex(intersect_pt)
-                        });
-                        let new_to_intersect_id = *back_intersect_map.entry(edge.clone()).or_insert_with(|| {
-                            back_mesh.add_vertex(intersect_pt)
-                        });
-                        front_added_halfedges.push((front_mesh.add_halfedge(), new_from_id));
-                        front_added_halfedges.push((front_mesh.add_halfedge(), new_from_intersect_id));
-                        back_added_halfedges.push((back_mesh.add_halfedge(), new_to_intersect_id));
-                        front_intersect_verts[0] = new_from_intersect_id;
-                        back_intersect_verts[1] = new_to_intersect_id;
-                    } else {
-                        let new_from_id = *back_vert_map.entry(from_vert_id).or_insert_with(|| {
-                            back_mesh.add_vertex(self.vertex(from_vert_id).unwrap().position)
-                        });
-                        let new_from_intersect_id = *back_intersect_map.entry(edge.clone()).or_insert_with(|| {
-                            back_mesh.add_vertex(intersect_pt)
-                        });
-                        let new_to_intersect_id = *front_intersect_map.entry(edge.clone()).or_insert_with(|| {
-                            front_mesh.add_vertex(intersect_pt)
-                        });
-                        back_added_halfedges.push((back_mesh.add_halfedge(), new_from_id));
-                        back_added_halfedges.push((back_mesh.add_halfedge(), new_from_intersect_id));
-                        front_added_halfedges.push((front_mesh.add_halfedge(), new_to_intersect_id));
-                        back_intersect_verts[0] = new_from_intersect_id;
-                        front_intersect_verts[1] = new_to_intersect_id;
+                if from_is_front {
+                    let new_vert_id = *front_vert_map.entry(from_vert_id).or_insert_with(|| {
+                        front_mesh.add_vertex(self.vertex(from_vert_id).unwrap().position)
+                    });
+                    if front_new_vert_set.insert(new_vert_id) {
+                        front_new_verts.push(new_vert_id);
                     }
-                } else {
-                    if *from_side == PointSide::Front {
-                        let new_from_id = *front_vert_map.entry(from_vert_id).or_insert_with(|| {
-                            front_mesh.add_vertex(self.vertex(from_vert_id).unwrap().position)
-                        });
-                        front_added_halfedges.push((front_mesh.add_halfedge(), new_from_id));
-                    } else {
-                        let new_from_id = *back_vert_map.entry(from_vert_id).or_insert_with(|| {
-                            back_mesh.add_vertex(self.vertex(from_vert_id).unwrap().position)
-                        });
-                        back_added_halfedges.push((back_mesh.add_halfedge(), new_from_id));
+                }
+                if from_is_back {
+                    let new_vert_id = *back_vert_map.entry(from_vert_id).or_insert_with(|| {
+                        back_mesh.add_vertex(self.vertex(from_vert_id).unwrap().position)
+                    });
+                    if back_new_vert_set.insert(new_vert_id) {
+                        back_new_verts.push(new_vert_id);
+                    }
+                }
+                if (from_is_front && to_is_back) || (from_is_back && to_is_front) {
+                    let intersect = intersect_map.entry(edge.clone()).or_insert_with(|| {
+                        let p0 = self.vertex(from_vert_id).unwrap().position;
+                        let p1 = self.vertex(to_vert_id).unwrap().position;
+                        intersect_of_segment_and_plane(p0, p1, pt_on_plane, norm)
+                    });
+                    if let SegmentPlaneIntersect::Intersection(intersect_pt) = *intersect {
+                        if from_is_front || to_is_front {
+                            let new_vert_id = *front_intersect_map.entry(edge.clone()).or_insert_with(|| {
+                                front_mesh.add_vertex(intersect_pt)
+                            });
+                            if front_new_vert_set.insert(new_vert_id) {
+                                front_new_verts.push(new_vert_id);
+                            }
+                            if from_is_front {
+                                front_intersects[0] = new_vert_id;
+                            }
+                            if to_is_front {
+                                front_intersects[1] = new_vert_id;
+                            }
+                        }
+                        if from_is_back || to_is_back {
+                            let new_vert_id = *back_intersect_map.entry(edge.clone()).or_insert_with(|| {
+                                back_mesh.add_vertex(intersect_pt)
+                            });
+                            if back_new_vert_set.insert(new_vert_id) {
+                                back_new_verts.push(new_vert_id);
+                            }
+                            if from_is_front {
+                                back_intersects[0] = new_vert_id;
+                            }
+                            if to_is_front {
+                                back_intersects[1] = new_vert_id;
+                            }
+                        }
+                    }
+                }
+                if to_is_front {
+                    let new_vert_id = *front_vert_map.entry(to_vert_id).or_insert_with(|| {
+                        front_mesh.add_vertex(self.vertex(to_vert_id).unwrap().position)
+                    });
+                    if front_new_vert_set.insert(new_vert_id) {
+                        front_new_verts.push(new_vert_id);
+                    }
+                }
+                if to_is_back {
+                    let new_vert_id = *back_vert_map.entry(to_vert_id).or_insert_with(|| {
+                        back_mesh.add_vertex(self.vertex(to_vert_id).unwrap().position)
+                    });
+                    if back_new_vert_set.insert(new_vert_id) {
+                        back_new_verts.push(new_vert_id);
                     }
                 }
             }
-            if !front_added_halfedges.is_empty() {
-                front_mesh.add_halfedges_and_vertices(front_added_halfedges);
-                if front_intersect_verts[0] > 0 && front_intersect_verts[1] > 0 {
-                    if front_fill_first == 0 {
-                        front_fill_first = front_intersect_verts[1];
-                    }
-                    front_fill_map.insert(front_intersect_verts[1], front_intersect_verts[0]);
-                }
+            if front_new_verts.len() >= 3 {
+                front_mesh.add_vertices(front_new_verts);
             }
-            if !back_added_halfedges.is_empty() {
-                back_mesh.add_halfedges_and_vertices(back_added_halfedges);
-                if back_intersect_verts[0] > 0 && back_intersect_verts[1] > 0 {
-                    if back_fill_first == 0 {
-                        back_fill_first = back_intersect_verts[1];
-                    }
-                    back_fill_map.insert(back_intersect_verts[1], back_intersect_verts[0]);
-                }
+            if back_new_verts.len() >= 3 {
+                back_mesh.add_vertices(back_new_verts);
+            }
+            if front_intersects[0] > 0 && front_intersects[1] > 0 {
+                front_cut_map.insert(front_intersects[1], front_intersects[0]);
+            }
+            if back_intersects[0] > 0 && back_intersects[1] > 0 {
+                back_cut_map.insert(back_intersects[0], back_intersects[1]);
             }
         }
-        if front_fill_first > 0 {
-            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-            let mut vert = front_fill_first;
-            added_halfedges.push((front_mesh.add_halfedge(), front_fill_first));
-            while front_fill_map[&vert] != front_fill_first {
-                vert = front_fill_map[&vert];
-                added_halfedges.push((front_mesh.add_halfedge(), vert));
-            }
-            front_mesh.add_halfedges_and_vertices(added_halfedges);
+        if front_cut_map.len() >= 3 {
+            front_mesh.add_linked_vertices(front_cut_map);
         }
-        if back_fill_first > 0 {
-            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-            let mut vert = back_fill_first;
-            added_halfedges.push((back_mesh.add_halfedge(), back_fill_first));
-            while back_fill_map[&vert] != back_fill_first {
-                vert = back_fill_map[&vert];
-                added_halfedges.push((back_mesh.add_halfedge(), vert));
-            }
-            back_mesh.add_halfedges_and_vertices(added_halfedges);
+        if back_cut_map.len() >= 3 {
+            back_mesh.add_linked_vertices(back_cut_map);
         }
         (front_mesh, back_mesh)
     }
@@ -678,4 +765,12 @@ pub trait Export {
 
 pub trait Import {
     fn import(&mut self, filename: &str) -> io::Result<()>;
+}
+
+impl Clone for Mesh {
+    fn clone(&self) -> Self {
+        let mut mesh = Mesh::new();
+        mesh.add_mesh(self);
+        mesh
+    }
 }

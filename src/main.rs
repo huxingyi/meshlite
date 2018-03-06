@@ -32,8 +32,7 @@ fn cube() -> Mesh {
     let mut m = Mesh::new();
     let face_id = m.add_plane(1.0, 1.0);
     let normal = m.face_norm(face_id);
-    m.extrude_face(face_id, normal, 1.0);
-    //m.remove_face(face_id);
+    m.extrude_face(face_id, normal, 1.0).translate(0.0, 0.0, -0.5);
     m
 }
 
@@ -120,10 +119,37 @@ fn main() {
     mesh.subdivide().triangulate().export("test.obj").expect("save file failed");
     */
 
-    let mut mesh = cube();
-    let point = Point3 {x: 0.0, y: 0.0, z: 0.5};
-    let norm = Vector3 {x: 0.0, y: 0.0, z: 1.0};
+    /*
+    let mesh Mesh::new();
+    let point = Point3 {x: 0.25, y: 0.25, z: 0.25};
+    let norm = Vector3 {x: 0.0, y: 0.2, z: 0.78};
     let (front_mesh, back_mesh) = mesh.split_mesh_by_plane(point, norm);
-    back_mesh.export("test.obj").expect("save file failed");
+    front_mesh.export("test.obj").expect("save file failed");
+    */
+
+    /*
+    let mut mesh = Mesh::new();
+    mesh.import("/Users/jeremy/ball.obj");
+    let point = Point3 {x: 0.25, y: 0.25, z: 0.25};
+    let norm = Vector3 {x: 0.0, y: 0.2, z: 0.78};
+    let (mut front_mesh, mut back_mesh) = mesh.split_mesh_by_plane(point, norm);
+    let mut merged_mesh = Mesh::new();
+    merged_mesh += front_mesh;
+    back_mesh.translate(0.0, 0.0, -0.5);
+    merged_mesh += back_mesh;
+    mesh.translate(0.0, 0.0, -3.0);
+    merged_mesh += mesh;
+    merged_mesh.export("test.obj").expect("save file failed");
+    */
+
+    let mut m1 = Mesh::new();
+    let mut m2 = Mesh::new();
+    m1.import("/Users/jeremy/cube.obj");
+    m1.scale(0.75);
+    m2.import("/Users/jeremy/ball.obj");
+    m2.scale(0.75);
+    m2.translate(0.3, 0.3, 0.3);
+    //m2.export("test.obj").expect("save file failed");
+    m2.split_mesh_by_other(&m1).0.export("test.obj").expect("save file failed");
 }
 

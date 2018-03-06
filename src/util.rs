@@ -52,6 +52,7 @@ pub fn angle360(a: Vector3<f32>, b: Vector3<f32>, direct: Vector3<f32>) -> f32 {
 }
 
 #[derive(PartialEq)]
+#[derive(Debug)]
 pub enum PointSide {
     Front,
     Back,
@@ -59,7 +60,7 @@ pub enum PointSide {
 }
 
 pub fn point_side_on_plane(pt: Point3<f32>, pt_on_plane: Point3<f32>, norm: Vector3<f32>) -> PointSide {
-    let line = pt_on_plane - pt;
+    let line = pt - pt_on_plane;
     let dot = line.dot(norm);
     if dot > 0.0 {
         PointSide::Front
@@ -71,6 +72,7 @@ pub fn point_side_on_plane(pt: Point3<f32>, pt_on_plane: Point3<f32>, norm: Vect
 }
 
 #[derive(PartialEq)]
+#[derive(Debug)]
 pub enum SegmentPlaneIntersect {
     NoIntersection,
     Parallel,
@@ -88,14 +90,14 @@ pub fn intersect_of_segment_and_plane(p0: Point3<f32>, p1: Point3<f32>, pt_on_pl
     let d = norm.dot(u);
     let n = -norm.dot(w);
     if d.abs() < SMALL_NUM {
-        if (n == 0.0) {
-            return SegmentPlaneIntersect::Parallel;
+        if n == 0.0 {
+            return SegmentPlaneIntersect::LiesIn;
         }
-        return SegmentPlaneIntersect::NoIntersection;
+        return SegmentPlaneIntersect::Parallel;
     }
     let s_i = n / d;
     if s_i < 0.0 || s_i > 1.0 {
         return SegmentPlaneIntersect::NoIntersection;
     }
-    SegmentPlaneIntersect::Intersection(p0 + s_i * u)
+    SegmentPlaneIntersect::Intersection(p0 + (s_i * u))
 }
