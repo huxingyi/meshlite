@@ -41,11 +41,12 @@ impl Export for Mesh {
                 writeln!(f, "v {} {} {}", vertex.position.x, vertex.position.y, vertex.position.z)?;
             }
         }
+        /*
         let mut face_iter = FaceIterator::new(self);
         while let Some(face_id) = face_iter.next() {
             let normal = self.face_norm(face_id);
             writeln!(f, "vn {} {} {}", normal.x, normal.y, normal.z)?;
-        }
+        }*/
         let mut face_iter = FaceIterator::new(self);
         let mut face_index = 0;
         while let Some(face_id) = face_iter.next() {

@@ -49,6 +49,22 @@ pub struct Halfedge {
     pub alive: bool,
 }
 
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub struct Point3Key {
+    x: u32,
+    y: u32,
+    z: u32,
+}
+
+impl Point3Key {
+    pub fn new(point: Point3<f32>) -> Self {
+        Point3Key {
+            x: (point.x * 1000.0).round() as u32,
+            y: (point.y * 1000.0).round() as u32,
+            z: (point.z * 1000.0).round() as u32,
+        }
+    }
+}
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub struct EdgeEndpoints {
@@ -219,6 +235,17 @@ impl Mesh {
     pub fn halfedge_start_vertex_id(&self, id: Id) -> Option<Id> {
         self.halfedge(id)
             .and_then(|h: &Halfedge| if 0 != h.vertex { Some(h.vertex) } else { None })
+    }
+
+    pub fn halfedge_face_id(&self, id: Id) -> Option<Id> {
+        self.halfedge(id)
+            .and_then(|h: &Halfedge| if 0 != h.face { Some(h.face) } else { None })
+    }
+
+    pub fn halfedge_direct(&self, id: Id) -> Vector3<f32> {
+        let begin_pos = self.halfedge_start_vertex(id).unwrap().position;
+        let end_pos = self.halfedge_start_vertex(self.halfedge_next_id(id).unwrap()).unwrap().position;
+        end_pos - begin_pos
     }
 
     pub fn set_halfedge_start_vertex_id(&mut self, halfedge_id: Id, vertex_id: Id) {
@@ -545,18 +572,25 @@ impl Mesh {
         self.transform(&mat)
     }
 
+    pub fn weld(&self) -> Self {
+        let mut mesh = Mesh::new();
+        mesh.add_mesh(&self);
+        mesh
+    }
+
     pub fn add_mesh(&mut self, other: &Mesh) {
-        let mut vertices_set : HashMap<Id, Id> = HashMap::new();
+        let mut vertices_set : HashMap<Point3Key, Id> = HashMap::new();
         for face_id in FaceIterator::new(&other) {
             let face = other.face(face_id).unwrap();
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
             for halfedge_id in FaceHalfedgeIterator::new(&other, face.halfedge) {
                 let vertex = other.halfedge_start_vertex(halfedge_id).unwrap();
-                if let Some(&new_vertex_id) = vertices_set.get(&vertex.id) {
+                let key = Point3Key::new(vertex.position);
+                if let Some(&new_vertex_id) = vertices_set.get(&key) {
                     added_halfedges.push((self.add_halfedge(), new_vertex_id));
                 } else {
                     let new_vertex_id = self.add_vertex(vertex.position);
-                    vertices_set.insert(vertex.id, new_vertex_id);
+                    vertices_set.insert(key, new_vertex_id);
                     added_halfedges.push((self.add_halfedge(), new_vertex_id));
                 }
             }
@@ -592,7 +626,7 @@ impl Mesh {
         for face_id in FaceIterator::new(other) {
             let norm = other.face_norm(face_id);
             let point = other.halfedge_start_vertex(other.face_first_halfedge_id(face_id).unwrap()).unwrap().position;
-            let (sub_front, sub_back) = inner_mesh.split_mesh_by_plane(point, norm);
+            let (sub_front, sub_back) = inner_mesh.split_mesh_by_plane(point, norm, false);
             inner_mesh = sub_back;
             outter_mesh.add_mesh(&sub_front);
         }
@@ -602,22 +636,25 @@ impl Mesh {
     pub fn union_mesh(&self, other: &Mesh) -> Mesh {
         let (other_outter, _) = other.split_mesh_by_other(self);
         let (my_outter, _) = self.split_mesh_by_other(other);
-        other_outter + my_outter
+        let mesh = other_outter + my_outter;
+        mesh.weld().fix_tjunction().combine_adj_faces()
     }
 
     pub fn diff_mesh(&self, other: &Mesh) -> Mesh {
         let (_, other_inner) =  other.split_mesh_by_other(self);
         let (my_outter, _) = self.split_mesh_by_other(other);
-        other_inner.flip_mesh() + my_outter
+        let mesh = other_inner.flip_mesh() + my_outter;
+        mesh.weld().fix_tjunction().combine_adj_faces()
     }
 
     pub fn intersect_mesh(&self, other: &Mesh) -> Mesh {
         let (_, other_inner) =  other.split_mesh_by_other(self);
         let (_, my_inner) = self.split_mesh_by_other(other);
-        other_inner + my_inner
+        let mesh = other_inner + my_inner;
+        mesh.weld().fix_tjunction().combine_adj_faces()
     }
 
-    pub fn split_mesh_by_plane(&self, pt_on_plane: Point3<f32>, norm: Vector3<f32>) -> (Mesh, Mesh) { 
+    pub fn split_mesh_by_plane(&self, pt_on_plane: Point3<f32>, norm: Vector3<f32>, fill_cut: bool) -> (Mesh, Mesh) { 
         let mut vert_side_map : HashMap<Id, PointSide> = HashMap::new();
         for face_id in FaceIterator::new(self) {
             for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
@@ -732,13 +769,180 @@ impl Mesh {
                 back_cut_map.insert(back_intersects[0], back_intersects[1]);
             }
         }
-        if front_cut_map.len() >= 3 {
-            front_mesh.add_linked_vertices(front_cut_map);
-        }
-        if back_cut_map.len() >= 3 {
-            back_mesh.add_linked_vertices(back_cut_map);
+        if fill_cut {
+            if front_cut_map.len() >= 3 {
+                front_mesh.add_linked_vertices(front_cut_map);
+            }
+            if back_cut_map.len() >= 3 {
+                back_mesh.add_linked_vertices(back_cut_map);
+            }
         }
         (front_mesh, back_mesh)
+    }
+
+    fn split_halfedge(&mut self, halfedge_id: Id, vertex_id: Id) -> Id {
+        let (face_id, next_halfedge_id) = {
+            let halfedge = self.halfedge(halfedge_id).unwrap();
+            (halfedge.face, halfedge.next)
+        };
+        let new_halfedge_id = self.add_halfedge();
+        {
+            let new_halfedge = self.halfedge_mut(new_halfedge_id).unwrap();
+            new_halfedge.vertex = vertex_id;
+            new_halfedge.face = face_id;
+        }
+        self.link_halfedges(new_halfedge_id, next_halfedge_id);
+        self.link_halfedges(halfedge_id, new_halfedge_id);
+        new_halfedge_id
+    }
+
+    pub fn fix_tjunction(&mut self) -> &mut Self {
+        let mut may_broken_halfedges = Vec::new();
+        for face_id in FaceIterator::new(self) {
+            for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
+                if self.halfedge_opposite_id(halfedge_id).is_none() {
+                    may_broken_halfedges.push(halfedge_id);
+                }
+            }
+        }
+        let mut i = 0;
+        'outer: while i < may_broken_halfedges.len() {
+            'inner: for j in 0..may_broken_halfedges.len() {
+                let long_id = may_broken_halfedges[i];
+                let short_id = may_broken_halfedges[j];
+                if long_id == short_id {
+                    continue;
+                }
+                if !self.halfedge_opposite_id(long_id).is_none() {
+                    continue;
+                }
+                let long_begin = self.halfedge_start_vertex(long_id).unwrap().position;
+                let long_end = self.halfedge_start_vertex(self.halfedge_next_id(long_id).unwrap()).unwrap().position;
+                
+                let (short_begin_pos, short_begin_vert_id) = {
+                    let vert = self.halfedge_start_vertex(short_id).unwrap();
+                    (vert.position, vert.id)
+                };
+                if is_point_on_segment(short_begin_pos, long_begin, long_end) {
+                    may_broken_halfedges.push(self.split_halfedge(long_id, short_begin_vert_id));
+                    continue 'outer;
+                }
+
+                let (short_end_pos, short_end_vert_id) = {
+                    let vert = self.halfedge_start_vertex(self.halfedge_next_id(short_id).unwrap()).unwrap();
+                    (vert.position, vert.id)
+                };
+                if is_point_on_segment(short_end_pos, long_begin, long_end) {
+                    may_broken_halfedges.push(self.split_halfedge(long_id, short_end_vert_id));
+                    continue 'outer;
+                }
+            }
+            i += 1;
+        }
+        self
+    }
+
+    pub fn combine_adj_faces_round(&self) -> (bool, Self) {
+        let from_mesh = self;
+        let mut to_mesh = Mesh::new();
+        let mut ignore_faces = HashSet::new();
+        let mut new_vert_map : HashMap<Id, Id> = HashMap::new();
+        let mut ignore_vert_ids : HashSet<Id> = HashSet::new();
+        for (_, &halfedge_id) in self.edges.iter() {
+            let face_id = from_mesh.halfedge_face_id(halfedge_id).unwrap();
+            if ignore_faces.contains(&face_id) {
+                continue;
+            }
+            if let Some(opposite_id) = from_mesh.halfedge_opposite_id(halfedge_id) {
+                let opposite_face_id = from_mesh.halfedge_face_id(opposite_id).unwrap();
+                if ignore_faces.contains(&opposite_face_id) {
+                    continue;
+                }
+                let prev_id = from_mesh.halfedge_prev_id(halfedge_id).unwrap();
+                let next_id = from_mesh.halfedge_next_id(halfedge_id).unwrap();
+                let opposite_prev_id = from_mesh.halfedge_prev_id(opposite_id).unwrap();
+                let opposite_next_id = from_mesh.halfedge_next_id(opposite_id).unwrap();
+                if !almost_eq(from_mesh.halfedge_direct(prev_id).normalize(), from_mesh.halfedge_direct(opposite_next_id).normalize()) {
+                    continue;
+                }
+                if !almost_eq(from_mesh.halfedge_direct(opposite_prev_id).normalize(), from_mesh.halfedge_direct(next_id).normalize()) {
+                    continue;
+                }
+                if from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(prev_id).unwrap()) == 
+                        from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(opposite_next_id).unwrap()) {
+                    ignore_vert_ids.insert(from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap());
+                }
+                if from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(opposite_prev_id).unwrap()) == 
+                        from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(next_id).unwrap()) {
+                    ignore_vert_ids.insert(from_mesh.halfedge_start_vertex_id(opposite_id).unwrap());
+                }
+                ignore_faces.insert(face_id);
+                ignore_faces.insert(opposite_face_id);
+                let mut added_vertices = Vec::new();
+                let mut loop_id = next_id;
+                while loop_id != halfedge_id {
+                    let (old_vert_id, old_vert_pos) = {
+                        let vert = from_mesh.halfedge_start_vertex(loop_id).unwrap();
+                        (vert.id, vert.position)
+                    };
+                    if !ignore_vert_ids.contains(&old_vert_id) {
+                        let new_vert_id = new_vert_map.entry(old_vert_id).or_insert_with(|| {
+                            to_mesh.add_vertex(old_vert_pos)
+                        });
+                        added_vertices.push(*new_vert_id);
+                    }
+                    loop_id = from_mesh.halfedge_next_id(loop_id).unwrap();
+                }
+                loop_id = opposite_next_id;
+                while loop_id != opposite_id {
+                    let (old_vert_id, old_vert_pos) = {
+                        let vert = from_mesh.halfedge_start_vertex(loop_id).unwrap();
+                        (vert.id, vert.position)
+                    };
+                    if !ignore_vert_ids.contains(&old_vert_id) {
+                        let new_vert_id = new_vert_map.entry(old_vert_id).or_insert_with(|| {
+                            to_mesh.add_vertex(old_vert_pos)
+                        });
+                        added_vertices.push(*new_vert_id);
+                    }
+                    loop_id = from_mesh.halfedge_next_id(loop_id).unwrap();
+                }
+                to_mesh.add_vertices(added_vertices);
+            }
+        }
+        for face_id in FaceIterator::new(from_mesh) {
+            if ignore_faces.contains(&face_id) {
+                continue;
+            }
+            let mut added_vertices = Vec::new();
+            for halfedge_id in FaceHalfedgeIterator::new(from_mesh, from_mesh.face_first_halfedge_id(face_id).unwrap()) {
+                let (old_vert_id, old_vert_pos) = {
+                    let vert = from_mesh.halfedge_start_vertex(halfedge_id).unwrap();
+                    (vert.id, vert.position)
+                };
+                if !ignore_vert_ids.contains(&old_vert_id) {
+                    let new_vert_id = new_vert_map.entry(old_vert_id).or_insert_with(|| {
+                        to_mesh.add_vertex(old_vert_pos)
+                    });
+                    added_vertices.push(*new_vert_id);
+                }
+            }
+            to_mesh.add_vertices(added_vertices);
+        }
+        (!ignore_faces.is_empty(), to_mesh)
+    }
+
+    pub fn combine_adj_faces(&self) -> Self {
+        let mut from_mesh = self.clone();
+        let mut combined = true;
+        let mut to_mesh = Mesh::new();
+        while combined {
+            let (sub_combined, sub_to_mesh) = from_mesh.combine_adj_faces_round();
+            combined = sub_combined;
+            from_mesh = sub_to_mesh.clone();
+            to_mesh = sub_to_mesh;
+        }
+        to_mesh
     }
 }
 

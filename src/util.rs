@@ -101,3 +101,23 @@ pub fn intersect_of_segment_and_plane(p0: Point3<f32>, p1: Point3<f32>, pt_on_pl
     }
     SegmentPlaneIntersect::Intersection(p0 + (s_i * u))
 }
+
+pub fn is_point_on_segment(point: Point3<f32>, seg_begin: Point3<f32>, seg_end: Point3<f32>) -> bool {
+    let v = seg_end - seg_begin;
+    let w = point - seg_begin;
+    let w_dot_v = w.dot(v);
+    if w_dot_v <= 0.0 {
+        return false;
+    }
+    let v_dot_v = v.dot(v);
+    if v_dot_v <= w_dot_v {
+        return false;
+    }
+    let t = seg_begin + (v * (w_dot_v / v_dot_v));
+    let dist = t.distance(point);
+    dist <= 0.00001
+}
+
+pub fn in_same_direct(first: Vector3<f32>, second: Vector3<f32>) -> bool {
+    first.dot(second) <= 0.0000001
+}
