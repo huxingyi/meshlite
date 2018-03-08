@@ -88,6 +88,8 @@ impl EdgeEndpoints {
     }
 }
 
+pub type FacePair = EdgeEndpoints;
+
 #[derive(Debug)]
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
@@ -240,6 +242,14 @@ impl Mesh {
     pub fn halfedge_face_id(&self, id: Id) -> Option<Id> {
         self.halfedge(id)
             .and_then(|h: &Halfedge| if 0 != h.face { Some(h.face) } else { None })
+    }
+
+    pub fn halfedge_opposite_face_id(&self, id: Id) -> Option<Id> {
+        let opposite_id = self.halfedge_opposite_id(id);
+        if opposite_id.is_none() {
+            return None;
+        }
+        self.halfedge_face_id(opposite_id.unwrap())
     }
 
     pub fn halfedge_direct(&self, id: Id) -> Vector3<f32> {
@@ -848,6 +858,8 @@ impl Mesh {
         let mut ignore_faces = HashSet::new();
         let mut new_vert_map : HashMap<Id, Id> = HashMap::new();
         let mut ignore_vert_ids : HashSet<Id> = HashSet::new();
+        let mut pending_old_verts : Vec<Vec<Id>> = Vec::new();
+        let mut face_pair_map : HashSet<FacePair> = HashSet::new();
         for (_, &halfedge_id) in self.edges.iter() {
             let face_id = from_mesh.halfedge_face_id(halfedge_id).unwrap();
             if ignore_faces.contains(&face_id) {
@@ -868,61 +880,53 @@ impl Mesh {
                 if !almost_eq(from_mesh.halfedge_direct(opposite_prev_id).normalize(), from_mesh.halfedge_direct(next_id).normalize()) {
                     continue;
                 }
-                if from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(prev_id).unwrap()) == 
-                        from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(opposite_next_id).unwrap()) {
+                let first_face_id = from_mesh.halfedge_opposite_face_id(prev_id);
+                let second_face_id = from_mesh.halfedge_opposite_face_id(opposite_next_id);
+                if (first_face_id == second_face_id) || 
+                        (!first_face_id.is_none() && !second_face_id.is_none() && 
+                            face_pair_map.contains(&FacePair::new(first_face_id.unwrap(), second_face_id.unwrap()))) {
                     ignore_vert_ids.insert(from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap());
                 }
-                if from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(opposite_prev_id).unwrap()) == 
-                        from_mesh.halfedge_face_id(from_mesh.halfedge_opposite_id(next_id).unwrap()) {
+                let first_face_id = from_mesh.halfedge_opposite_face_id(opposite_prev_id);
+                let second_face_id = from_mesh.halfedge_opposite_face_id(next_id);
+                if (first_face_id == second_face_id) || 
+                        (!first_face_id.is_none() && !second_face_id.is_none() && 
+                            face_pair_map.contains(&FacePair::new(first_face_id.unwrap(), second_face_id.unwrap()))) {
                     ignore_vert_ids.insert(from_mesh.halfedge_start_vertex_id(opposite_id).unwrap());
                 }
                 ignore_faces.insert(face_id);
                 ignore_faces.insert(opposite_face_id);
-                let mut added_vertices = Vec::new();
+                face_pair_map.insert(FacePair::new(face_id, opposite_face_id));
+                let mut old_vertices = Vec::new();
                 let mut loop_id = next_id;
                 while loop_id != halfedge_id {
-                    let (old_vert_id, old_vert_pos) = {
-                        let vert = from_mesh.halfedge_start_vertex(loop_id).unwrap();
-                        (vert.id, vert.position)
-                    };
-                    if !ignore_vert_ids.contains(&old_vert_id) {
-                        let new_vert_id = new_vert_map.entry(old_vert_id).or_insert_with(|| {
-                            to_mesh.add_vertex(old_vert_pos)
-                        });
-                        added_vertices.push(*new_vert_id);
-                    }
+                    old_vertices.push(from_mesh.halfedge_start_vertex_id(loop_id).unwrap());
                     loop_id = from_mesh.halfedge_next_id(loop_id).unwrap();
                 }
                 loop_id = opposite_next_id;
                 while loop_id != opposite_id {
-                    let (old_vert_id, old_vert_pos) = {
-                        let vert = from_mesh.halfedge_start_vertex(loop_id).unwrap();
-                        (vert.id, vert.position)
-                    };
-                    if !ignore_vert_ids.contains(&old_vert_id) {
-                        let new_vert_id = new_vert_map.entry(old_vert_id).or_insert_with(|| {
-                            to_mesh.add_vertex(old_vert_pos)
-                        });
-                        added_vertices.push(*new_vert_id);
-                    }
+                    old_vertices.push(from_mesh.halfedge_start_vertex_id(loop_id).unwrap());
                     loop_id = from_mesh.halfedge_next_id(loop_id).unwrap();
                 }
-                to_mesh.add_vertices(added_vertices);
+                pending_old_verts.push(old_vertices);
             }
         }
         for face_id in FaceIterator::new(from_mesh) {
             if ignore_faces.contains(&face_id) {
                 continue;
             }
-            let mut added_vertices = Vec::new();
+            let mut old_vertices = Vec::new();
             for halfedge_id in FaceHalfedgeIterator::new(from_mesh, from_mesh.face_first_halfedge_id(face_id).unwrap()) {
-                let (old_vert_id, old_vert_pos) = {
-                    let vert = from_mesh.halfedge_start_vertex(halfedge_id).unwrap();
-                    (vert.id, vert.position)
-                };
-                if !ignore_vert_ids.contains(&old_vert_id) {
-                    let new_vert_id = new_vert_map.entry(old_vert_id).or_insert_with(|| {
-                        to_mesh.add_vertex(old_vert_pos)
+                old_vertices.push(from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap());
+            }
+            pending_old_verts.push(old_vertices);
+        }
+        for verts in pending_old_verts.iter() {
+            let mut added_vertices = Vec::new();
+            for old_vert_id in verts.iter() {
+                if !ignore_vert_ids.contains(old_vert_id) {
+                    let new_vert_id = new_vert_map.entry(*old_vert_id).or_insert_with(|| {
+                        to_mesh.add_vertex(from_mesh.vertex(*old_vert_id).unwrap().position)
                     });
                     added_vertices.push(*new_vert_id);
                 }
