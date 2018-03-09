@@ -145,9 +145,9 @@ fn main() {
     let mut m1 = Mesh::new();
     let mut m2 = Mesh::new();
     m1.import("/Users/jeremy/cube.obj");
-    m1.scale(0.75);
+    m1.scale(0.60);
     m2.import("/Users/jeremy/ball.obj");
-    m2.scale(0.75);
+    //m2.scale(0.75);
     m2.translate(0.3, 0.3, 0.3);
     //m2.export("test.obj").expect("save file failed");
     m1.union_mesh(&m2).export("test.obj").expect("save file failed");
