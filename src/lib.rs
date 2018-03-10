@@ -21,6 +21,9 @@ use wrap::GiftWrapper;
 use subdivide::CatmullClarkSubdivider;
 use triangulate::Triangulate;
 use subdivide::Subdivide;
+use iterator::FaceHalfedgeIterator;
+
+use std::cmp;
 
 const MAGIC_NUM: u32 = 12345678;
 
@@ -189,4 +192,143 @@ pub extern "C" fn meshlite_scale(context: *mut RustContext, mesh_id: c_int, valu
     assert_eq!(ctx.magic, MAGIC_NUM);
     ctx.meshes.get_mut((mesh_id - 1) as usize).unwrap().scale(value);
     0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_vertex_count(context: *mut RustContext, mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    ctx.meshes.get((mesh_id - 1) as usize).unwrap().vertices.len() as i32
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_face_count(context: *mut RustContext, mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    ctx.meshes.get((mesh_id - 1) as usize).unwrap().face_count as i32
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_edge_count(context: *mut RustContext, mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    ctx.meshes.get((mesh_id - 1) as usize).unwrap().edges.len() as i32
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_vertex_position_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_float, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.vertices.len() * 3) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for vert_idx in 0..mesh.vertices.len() {
+        let position = mesh.vertices[vert_idx].position;
+        if i + 3 > count {
+            break;
+        }
+        unsafe {
+            *buffer.offset(i + 0) = position.x;
+            *buffer.offset(i + 1) = position.y;
+            *buffer.offset(i + 2) = position.z;
+        }
+        i += 3;
+    }
+    i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_triangle_index_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.face_count * 3) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for face in mesh.faces.iter() {
+        if !face.alive {
+            continue;
+        }
+        if i + 3 > count {
+            break;
+        }
+        let mut j = 0;
+        for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face.id).unwrap()) {
+            if j >= 3 {
+                break;
+            }
+            let vert_id = mesh.halfedge_start_vertex_id(halfedge_id).unwrap() as c_int;
+            unsafe {
+                *buffer.offset(i + j) = vert_id - 1;
+            }
+            j += 1;
+        }
+        i += j;
+    }
+    i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_triangle_normal_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_float, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.face_count * 3) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for face in mesh.faces.iter() {
+        if !face.alive {
+            continue;
+        }
+        if i + 3 > count {
+            break;
+        }
+        let norm = mesh.face_norm(face.id);
+        unsafe {
+            *buffer.offset(i + 0) = norm.x;
+            *buffer.offset(i + 1) = norm.y;
+            *buffer.offset(i + 2) = norm.z;
+        }
+        i += 3;
+    }
+    count as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_edge_index_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.edges.len() * 2) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for (edge, _) in mesh.edges.iter() {
+        if i + 2 > count {
+            break;
+        }
+        unsafe {
+            *buffer.offset(i + 0) = edge.low as c_int - 1;
+            *buffer.offset(i + 1) = edge.high as c_int - 1;
+        }
+        i += 2;
+    }
+    i as c_int
 }

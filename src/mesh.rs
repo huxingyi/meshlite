@@ -68,8 +68,8 @@ impl Point3Key {
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub struct EdgeEndpoints {
-    low: Id,
-    high: Id,
+    pub low: Id,
+    pub high: Id,
 }
 
 impl EdgeEndpoints {
@@ -98,8 +98,7 @@ pub struct Mesh {
     pub face_count: usize,
     pub halfedges: Vec<Halfedge>,
     pub halfedge_count: usize,
-    pub edges: HashMap<EdgeEndpoints, Id>,
-    pub edge_count: usize,
+    pub edges: HashMap<EdgeEndpoints, Id>
 }
 
 impl Mesh {
@@ -111,8 +110,7 @@ impl Mesh {
             face_count: 0,
             halfedges: Vec::new(),
             halfedge_count: 0,
-            edges: HashMap::new(),
-            edge_count: 0,
+            edges: HashMap::new()
         }
     }
 
@@ -339,13 +337,16 @@ impl Mesh {
                 if alt_id.is_none() {
                     self.set_vertex_first_halfedge_id(vertex_id, 0);
                     self.vertex_mut(vertex_id).unwrap().alive = false;
+                    self.vertex_count -= 1;
                 } else {
                     self.set_vertex_first_halfedge_id(vertex_id, alt_id.unwrap());
                 }
             }
             self.halfedge_mut(halfedge_id).unwrap().alive = false;
+            self.halfedge_count -= 1;
         }
         self.face_mut(id).unwrap().alive = false;
+        self.face_count -= 1;
     }
 
     pub fn face_mut(&mut self, id: Id) -> Option<&mut Face> {
@@ -397,6 +398,7 @@ impl Mesh {
             position : position,
             alive: true,
         });
+        self.vertex_count += 1;
         new_id
     }
 
@@ -411,6 +413,7 @@ impl Mesh {
             opposite: 0,
             alive: true,
         });
+        self.halfedge_count += 1;
         new_id
     }
 
@@ -433,7 +436,6 @@ impl Mesh {
             Some(&halfedge) => self.pair_halfedges(first, halfedge),
             _ => {
                 self.edges.insert(endpoints, first);
-                self.edge_count += 1; 
             }
         };
     }
@@ -447,6 +449,7 @@ impl Mesh {
             next: 0,
             alive: true,
         });
+        self.face_count += 1;
         new_id
     }
 

@@ -15,6 +15,13 @@ int meshlite_union(void *context, int first_mesh_id, int second_mesh_id);
 int meshlite_diff(void *context, int first_mesh_id, int second_mesh_id);
 int meshlite_intersect(void *context, int first_mesh_id, int second_mesh_id);
 int meshlite_scale(void *context, int mesh_id, float value);
+int meshlite_get_vertex_count(void *context, int mesh_id);
+int meshlite_get_vertex_position_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
+int meshlite_get_face_count(void *context, int mesh_id);
+int meshlite_get_triangle_index_array(void *context, int mesh_id, int *buffer, int max_buffer_len);
+int meshlite_get_triangle_normal_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
+int meshlite_get_edge_count(void *context, int mesh_id);
+int meshlite_get_edge_index_array(void *context, int mesh_id, int *buffer, int max_buffer_len);
 
 #ifdef __cplusplus
 }
