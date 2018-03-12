@@ -37,7 +37,6 @@ impl Triangulate for Mesh {
                         let angle = angle360(cone_v.position - enter_v.position,
                             leave_v.position - cone_v.position,
                             direct);
-                        println!("angle: {:?}", angle);
                         if angle < 180.0 {
                             let mut is_ear = true;
                             for j in 0..(vertices.len() - 3) {

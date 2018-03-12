@@ -88,6 +88,18 @@ fn main() {
     bmesh.add_edge(node2, node4);
     let mut mesh = bmesh.generate_mesh(node2);
     */
+
+    /*
+    x:1.633484 y:1.411765 z:0.000000 r:0.144590
+    x:1.778280 y:0.411765 z:0.000000 r:0.191739
+    */
+    let mut bmesh = Bmesh::new();
+    let node1 = bmesh.add_node(Point3 {x:1.633484, y:1.411765, z:0.000000}, 0.144590);
+    let node2 = bmesh.add_node(Point3 {x:1.778280, y:0.411765, z:0.000000}, 0.191739);
+    bmesh.add_edge(node1, node2);
+    let mut mesh = bmesh.generate_mesh(node1);
+    mesh.export("test.obj").expect("save file failed");
+
     /*
     let node0 = bmesh.add_node(Point3 {x: -2.07575, y: 1.53902, z: 0.04122}, 0.25);                                    
     let node1 = bmesh.add_node(Point3 {x: 2.40837, y: 2.34882, z: 0.48585}, 0.3);
@@ -142,6 +154,7 @@ fn main() {
     merged_mesh.export("test.obj").expect("save file failed");
     */
 
+    /*
     let mut m1 = Mesh::new();
     let mut m2 = Mesh::new();
     m1.import("/Users/jeremy/cube.obj");
@@ -151,5 +164,6 @@ fn main() {
     m2.translate(0.3, 0.3, 0.3);
     //m2.export("test.obj").expect("save file failed");
     m1.union_mesh(&m2).export("test.obj").expect("save file failed");
+    */
 }
 

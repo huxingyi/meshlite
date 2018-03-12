@@ -13,7 +13,10 @@ mod bmesh;
 mod triangulate;
 mod wavefront;
 
+use cgmath::Point3;
+
 use mesh::Mesh;
+use bmesh::Bmesh;
 use mesh::Export;
 use mesh::Import;
 
@@ -32,6 +35,8 @@ pub struct RustContext {
     magic: u32,
     meshes: Vec<Mesh>,
     free_mesh_ids: Vec<i32>,
+    bmeshes: Vec<Bmesh>,
+    free_bmesh_ids: Vec<i32>,
 }
 
 fn alloc_mesh_id(ctx: &mut RustContext) -> i32 {
@@ -47,7 +52,25 @@ fn alloc_mesh_id(ctx: &mut RustContext) -> i32 {
 }
 
 fn free_mesh_id(ctx: &mut RustContext, id: i32) {
+    ctx.meshes[id as usize - 1] = Mesh::new();
     ctx.free_mesh_ids.push(id);
+}
+
+fn alloc_bmesh_id(ctx: &mut RustContext) -> i32 {
+    let mut id = 0;
+    if ctx.free_bmesh_ids.len() > 0 {
+        id = ctx.free_bmesh_ids[0];
+        ctx.free_bmesh_ids.swap_remove(0);
+    } else {
+        ctx.bmeshes.push(Bmesh::new());
+        id = ctx.bmeshes.len() as i32;
+    }
+    id
+}
+
+fn free_bmesh_id(ctx: &mut RustContext, id: i32) {
+    ctx.bmeshes[id as usize - 1] = Bmesh::new();
+    ctx.free_bmesh_ids.push(id);
 }
 
 #[no_mangle]
@@ -56,16 +79,20 @@ pub extern "C" fn meshlite_create_context() -> *mut RustContext {
         magic: MAGIC_NUM,
         meshes: Vec::new(),
         free_mesh_ids: Vec::new(),
+        bmeshes: Vec::new(),
+        free_bmesh_ids: Vec::new(),
     }))
 }
 
-pub extern "C" fn meshlite_destroy_context(context: *mut RustContext) {
+#[no_mangle]
+pub extern "C" fn meshlite_destroy_context(context: *mut RustContext) -> c_int {
     if context.is_null() { 
-        return 
+        return 0;
     }
     unsafe { 
         Box::from_raw(context); 
     }
+    0
 }
 
 #[no_mangle]
@@ -331,4 +358,65 @@ pub extern "C" fn meshlite_get_edge_index_array(context: *mut RustContext, mesh_
         i += 2;
     }
     i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_create(context: *mut RustContext) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_bmesh_id = alloc_bmesh_id(ctx);
+    new_bmesh_id as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_add_node(context: *mut RustContext, bmesh_id: c_int, x: c_float, y: c_float, z: c_float, radius: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    println!("rust bmesh_id:{:?} x:{:?} y:{:?} z:{:?} radius:{:?}", bmesh_id, x, y, z, radius);
+    bmesh.add_node(Point3 {x: x, y: y, z: z}, radius) as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_add_edge(context: *mut RustContext, bmesh_id: c_int, first_node_id: c_int, second_node_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    println!("rust bmesh_id:{:?} first_node_id:{:?} second_node_id:{:?}", bmesh_id, first_node_id, second_node_id);
+    bmesh.add_edge(first_node_id as usize, second_node_id as usize) as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_generate_mesh(context: *mut RustContext, bmesh_id: c_int, root_node_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    println!("rust bmesh_id:{:?} root_node_id:{:?}", bmesh_id, root_node_id);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    let mesh = bmesh.generate_mesh(root_node_id as usize);
+    ctx.meshes.insert((new_mesh_id - 1) as usize, mesh.clone());
+    new_mesh_id
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_destroy(context: *mut RustContext, bmesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    free_bmesh_id(ctx, bmesh_id);
+    0
 }
