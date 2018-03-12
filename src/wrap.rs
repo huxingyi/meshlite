@@ -297,19 +297,19 @@ impl GiftWrapper {
                 used_ids.insert(paired.unwrap(), true);
                 continue;
             }
-            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
-            mesh.add_halfedges_and_vertices(added_halfedges);
+            let mut added_vertices = Vec::new();
+            added_vertices.push(self.source_vertices[f.p1].tag);
+            added_vertices.push(self.source_vertices[f.p2].tag);
+            added_vertices.push(self.source_vertices[f.p3].tag);
+            mesh.add_vertices(added_vertices);
         }
         for f in quards.iter() {
-            let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p1].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p2].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p3].tag));
-            added_halfedges.push((mesh.add_halfedge(), self.source_vertices[f.p4].tag));
-            mesh.add_halfedges_and_vertices(added_halfedges);
+            let mut added_vertices = Vec::new();
+            added_vertices.push(self.source_vertices[f.p1].tag);
+            added_vertices.push(self.source_vertices[f.p2].tag);
+            added_vertices.push(self.source_vertices[f.p3].tag);
+            added_vertices.push(self.source_vertices[f.p4].tag);
+            mesh.add_vertices(added_vertices);
         }
     }
 

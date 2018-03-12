@@ -68,8 +68,8 @@ impl Bmesh {
             v = Vector3 {x: 0.0, y: 0.0, z: 1.0};
         }
         println!("u: {:?} v: {:?} direct: {:?}", u, v, direct);
-        let u = u * radius * 0.6;
-        let v = v * radius * 0.6;
+        let u = u.normalize() * radius;
+        let v = v.normalize() * radius;
         let origin = position + direct * radius;
         let mut f = Face4 {a: origin - u - v,
             b: origin + u - v,

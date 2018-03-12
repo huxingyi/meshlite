@@ -468,6 +468,11 @@ impl Mesh {
     pub fn add_vertices(&mut self, added_vertices : Vec<Id>) -> Id {
         let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
         for i in 0..added_vertices.len() {
+            if self.vertex(added_vertices[i]).is_none() {
+                return 0;
+            }
+        }
+        for i in 0..added_vertices.len() {
             added_halfedges.push((self.add_halfedge(), added_vertices[i]));
         }
         self.add_halfedges_and_vertices(added_halfedges)
