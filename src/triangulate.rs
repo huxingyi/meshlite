@@ -26,6 +26,7 @@ impl Triangulate for Mesh {
             if vertices.len() > 3 {
                 let direct = self.face_norm(face_id);
                 while vertices.len() > 3 {
+                    let mut new_face_generated = false;
                     for i in 0..vertices.len() {
                         let i_next = (i + 1) % vertices.len();
                         let enter = vertices[i];
@@ -50,14 +51,19 @@ impl Triangulate for Mesh {
                             if is_ear {
                                 tri_faces.push((enter, cone, leave));
                                 vertices.remove(i_next);
+                                new_face_generated = true;
                                 break;
                             }
                         }
                     }
+                    if !new_face_generated {
+                        break;
+                    }
                 }
             }
-            assert_eq!(vertices.len(), 3);
-            tri_faces.push((vertices[0], vertices[1], vertices[2]));
+            if vertices.len() == 3 {
+                tri_faces.push((vertices[0], vertices[1], vertices[2]));
+            }
         }
         for tri_faces in tri_faces {
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
