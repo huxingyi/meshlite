@@ -95,20 +95,31 @@ impl Bmesh {
         let mut new_indices : Vec<NodeIndex> = Vec::new();
         {
             let neighbors = self.graph.neighbors_undirected(node_index);
-            let mut added_faces = Vec::new();
-            for other_index in neighbors {
+            let mut neighbors_count = 0;
+            let mut directs = Vec::new();
+            for other_index in neighbors.clone() {
                 let direct = self.direct_of_nodes(node_index, other_index);
+                directs.push(direct);
+                neighbors_count += 1;
+            }
+            let mut added_faces = Vec::new();
+            let mut order = 0;
+            for other_index in neighbors {
+                let mut direct = self.direct_of_nodes(node_index, other_index);
                 let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
-                let face = self.make_cut(node_position, direct, node_radius);
-                let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.a)));
-                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.b)));
-                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.c)));
-                added_halfedges.push((self.mesh.add_halfedge(), self.mesh.add_vertex(face.d)));
-                let new_face_id = self.mesh.add_halfedges_and_vertices(added_halfedges);
+                let mut create_origin = node_position;
+                if 1 == neighbors_count {
+                    create_origin -= direct * node_radius;
+                } else if 2 == neighbors_count {
+                    let pair_direct = directs[(order + 1) % 2];
+                    direct = (direct + ((direct - pair_direct) / 2.0)) / 2.0;
+                }
+                let face = self.make_cut(create_origin, direct, node_radius);
+                let new_face_id = self.mesh.add_positions(vec![face.a, face.b, face.c, face.d]);
                 added_faces.push(new_face_id);
                 new_faces.push((edge_index, new_face_id));
                 new_indices.push(other_index);
+                order += 1;
             }
             if added_faces.len() > 1 {
                 let mut wrapper = GiftWrapper::new();

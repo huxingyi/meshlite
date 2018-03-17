@@ -491,6 +491,14 @@ impl Mesh {
         self.add_halfedges_and_vertices(added_halfedges)
     }
 
+    pub fn add_positions(&mut self, added_positions : Vec<Point3<f32>>) -> Id {
+        let mut added_vertices : Vec<Id> = Vec::new();
+        for i in 0..added_positions.len() {
+            added_vertices.push(self.add_vertex(added_positions[i]));
+        }
+        self.add_vertices(added_vertices)
+    }
+
     pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
         assert!(added_halfedges.len() < 1000);
         let added_face_id = self.add_face();
