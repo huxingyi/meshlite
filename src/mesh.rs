@@ -389,6 +389,12 @@ impl Mesh {
     }
 
     pub fn add_vertex(&mut self, position: Point3<f32>) -> usize {
+        assert!(!position.x.is_nan());
+        assert!(!position.y.is_nan());
+        assert!(!position.z.is_nan());
+        assert!(!position.x.is_infinite());
+        assert!(!position.y.is_infinite());
+        assert!(!position.z.is_infinite());
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
@@ -455,17 +461,24 @@ impl Mesh {
 
     pub fn add_linked_vertices(&mut self, linked_vertices: HashMap<Id, Id>) -> Id {
         let (&first_id, _) = linked_vertices.iter().next().unwrap();
-        let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
         let mut vert = first_id;
-        added_halfedges.push((self.add_halfedge(), first_id));
+        let mut visited_sets = HashSet::new();
+        let mut added_vertices = Vec::new();
+        added_vertices.push(first_id);
+        visited_sets.insert(first_id);
         while linked_vertices.contains_key(&vert) && linked_vertices[&vert] != first_id {
             vert = linked_vertices[&vert];
-            added_halfedges.push((self.add_halfedge(), vert));
+            if visited_sets.contains(&vert) {
+                return 0;
+            }
+            visited_sets.insert(vert);
+            added_vertices.push(vert);
         }
-        self.add_halfedges_and_vertices(added_halfedges)
+        self.add_vertices(added_vertices)
     }
 
     pub fn add_vertices(&mut self, added_vertices : Vec<Id>) -> Id {
+        assert!(added_vertices.len() < 1000);
         let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
         for i in 0..added_vertices.len() {
             if self.vertex(added_vertices[i]).is_none() {
@@ -479,6 +492,7 @@ impl Mesh {
     }
 
     pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
+        assert!(added_halfedges.len() < 1000);
         let added_face_id = self.add_face();
         for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
             self.vertex_mut(added_vertex_id).unwrap().halfedge = added_halfedge_id;
@@ -651,21 +665,21 @@ impl Mesh {
         (outter_mesh, inner_mesh)
     }
 
-    pub fn union_mesh(&self, other: &Mesh) -> Mesh {
+    pub fn union_convex_mesh(&self, other: &Mesh) -> Mesh {
         let (other_outter, _) = other.split_mesh_by_other(self);
         let (my_outter, _) = self.split_mesh_by_other(other);
         let mesh = other_outter + my_outter;
         mesh.weld().fix_tjunction().combine_adj_faces()
     }
 
-    pub fn diff_mesh(&self, other: &Mesh) -> Mesh {
+    pub fn diff_convex_mesh(&self, other: &Mesh) -> Mesh {
         let (_, other_inner) =  other.split_mesh_by_other(self);
         let (my_outter, _) = self.split_mesh_by_other(other);
         let mesh = other_inner.flip_mesh() + my_outter;
         mesh.weld().fix_tjunction().combine_adj_faces()
     }
 
-    pub fn intersect_mesh(&self, other: &Mesh) -> Mesh {
+    pub fn intersect_convex_mesh(&self, other: &Mesh) -> Mesh {
         let (_, other_inner) =  other.split_mesh_by_other(self);
         let (_, my_inner) = self.split_mesh_by_other(other);
         let mesh = other_inner + my_inner;

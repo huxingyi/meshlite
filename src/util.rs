@@ -96,7 +96,7 @@ pub fn intersect_of_segment_and_plane(p0: Point3<f32>, p1: Point3<f32>, pt_on_pl
         return SegmentPlaneIntersect::Parallel;
     }
     let s_i = n / d;
-    if s_i < 0.0 || s_i > 1.0 {
+    if s_i < 0.0 || s_i > 1.0 || s_i.is_nan() || s_i.is_infinite() {
         return SegmentPlaneIntersect::NoIntersection;
     }
     SegmentPlaneIntersect::Intersection(p0 + (s_i * u))

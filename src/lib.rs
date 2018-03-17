@@ -19,6 +19,7 @@ use mesh::Mesh;
 use bmesh::Bmesh;
 use mesh::Export;
 use mesh::Import;
+use mesh::Id;
 
 use wrap::GiftWrapper;
 use subdivide::CatmullClarkSubdivider;
@@ -178,7 +179,7 @@ pub extern "C" fn meshlite_union(context: *mut RustContext, first_mesh_id: c_int
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
-    let new_mesh = ctx.meshes.get((first_mesh_id - 1) as usize).unwrap().union_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
+    let new_mesh = ctx.meshes.get((first_mesh_id - 1) as usize).unwrap().union_convex_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
     let new_mesh_id = alloc_mesh_id(ctx);
     ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
     new_mesh_id
@@ -191,7 +192,7 @@ pub extern "C" fn meshlite_diff(context: *mut RustContext, first_mesh_id: c_int,
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
-    let new_mesh = ctx.meshes.get((first_mesh_id - 1) as usize).unwrap().diff_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
+    let new_mesh = ctx.meshes.get((first_mesh_id - 1) as usize).unwrap().diff_convex_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
     let new_mesh_id = alloc_mesh_id(ctx);
     ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
     new_mesh_id
@@ -204,7 +205,7 @@ pub extern "C" fn meshlite_intersect(context: *mut RustContext, first_mesh_id: c
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
-    let new_mesh = ctx.meshes.get((first_mesh_id - 1) as usize).unwrap().intersect_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
+    let new_mesh = ctx.meshes.get((first_mesh_id - 1) as usize).unwrap().intersect_convex_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
     let new_mesh_id = alloc_mesh_id(ctx);
     ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
     new_mesh_id
@@ -310,6 +311,44 @@ pub extern "C" fn meshlite_get_triangle_index_array(context: *mut RustContext, m
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_get_face_index_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = max_buffer_len as isize;
+    let mut i : isize = 0;
+    for face in mesh.faces.iter() {
+        if !face.alive {
+            continue;
+        }
+        let mut vert_ids = Vec::new();
+        for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face.id).unwrap()) {
+            let vert_id = mesh.halfedge_start_vertex_id(halfedge_id).unwrap() as c_int;
+            vert_ids.push(vert_id);
+        }
+        if vert_ids.len() == 0 {
+            continue;
+        }
+        if i + 1 + vert_ids.len() as isize > count {
+            break;
+        }
+        unsafe {
+            *buffer.offset(i) = vert_ids.len() as i32;
+        }
+        for j in 0..vert_ids.len() as isize {
+            unsafe {
+                *buffer.offset(i + 1 + j) = vert_ids[j as usize] - 1;
+            }
+        }
+        i += 1 + vert_ids.len() as isize;
+    }
+    i as c_int
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_get_triangle_normal_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_float, max_buffer_len: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
@@ -358,6 +397,46 @@ pub extern "C" fn meshlite_get_edge_index_array(context: *mut RustContext, mesh_
         i += 2;
     }
     i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_build(context: *mut RustContext, vertex_position_buffer: *mut c_float, vertex_count: c_int, face_index_buffer: *mut c_int, face_index_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let mesh = ctx.meshes.get_mut((new_mesh_id - 1) as usize).unwrap();
+    let mut offset = 0;
+    let mut vertex_ids = Vec::new();
+    for i in 0..vertex_count {
+        vertex_ids.push(mesh.add_vertex(unsafe {
+            Point3 {
+                x: *vertex_position_buffer.offset(offset + 0),
+                y: *vertex_position_buffer.offset(offset + 1),
+                z: *vertex_position_buffer.offset(offset + 2),
+            }
+        }));
+        offset += 3;
+    }
+    offset = 0;
+    while offset < face_index_buffer_len as isize {
+        let index_count = unsafe {
+            *face_index_buffer.offset(offset)
+        };
+        offset += 1;
+        let mut added_vertices = Vec::new();
+        for i in 0..index_count {
+            let index = unsafe {
+                *face_index_buffer.offset(offset)
+            };
+            added_vertices.push(vertex_ids[index as usize] as Id);
+            offset += 1;
+        }
+        mesh.add_vertices(added_vertices);
+    }
+    new_mesh_id
 }
 
 #[no_mangle]
