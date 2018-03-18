@@ -102,6 +102,44 @@ pub fn intersect_of_segment_and_plane(p0: Point3<f32>, p1: Point3<f32>, pt_on_pl
     SegmentPlaneIntersect::Intersection(p0 + (s_i * u))
 }
 
+// Modified from intersectRayWithSquare
+// https://stackoverflow.com/questions/21114796/3d-ray-quad-intersection-test-in-java
+pub fn is_segment_and_quad_intersect(p0: Point3<f32>, p1: Point3<f32>, quad: &Vec<Point3<f32>>) -> bool {
+    let r1 = p0;
+    let r2 = p1;
+    let s1 = quad[0];
+    let s2 = quad[1];
+    let s3 = quad[2];
+    let ds21 = s2 - s1;
+    let ds31 = s3 - s1;
+    let n = ds21.cross(ds31);
+    let dr = r1 - r2;
+    let ndotdr = n.dot(dr);
+    if ndotdr.abs() < SMALL_NUM {
+        return false;
+    }
+    let t = -n.dot(r1 - s1) / ndotdr;
+    let m = r1 + (dr * t);
+    let dms1 = m - s1;
+    let u = dms1.dot(ds21);
+    let v = dms1.dot(ds31);
+    u >= 0.0 && u <= ds21.dot(ds21) && v >= 0.0 && v <= ds31.dot(ds31)
+}
+
+pub fn is_two_quads_intersect(first_quad: &Vec<Point3<f32>>, second_quad: &Vec<Point3<f32>>) -> bool {
+    for i in 0..second_quad.len() {
+        if is_segment_and_quad_intersect(second_quad[i], second_quad[(i + 1) % second_quad.len()], first_quad) {
+            return true;
+        }
+    }
+    for i in 0..first_quad.len() {
+        if is_segment_and_quad_intersect(first_quad[i], first_quad[(i + 1) % first_quad.len()], second_quad) {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn is_point_on_segment(point: Point3<f32>, seg_begin: Point3<f32>, seg_end: Point3<f32>) -> bool {
     let v = seg_end - seg_begin;
     let w = point - seg_begin;
