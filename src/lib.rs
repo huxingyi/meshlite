@@ -243,6 +243,16 @@ pub extern "C" fn meshlite_get_face_count(context: *mut RustContext, mesh_id: c_
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_get_halfedge_count(context: *mut RustContext, mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    ctx.meshes.get((mesh_id - 1) as usize).unwrap().halfedge_count as i32
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_get_edge_count(context: *mut RustContext, mesh_id: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
@@ -273,6 +283,71 @@ pub extern "C" fn meshlite_get_vertex_position_array(context: *mut RustContext, 
             *buffer.offset(i + 2) = position.z;
         }
         i += 3;
+    }
+    i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_halfedge_index_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.halfedge_count * 2) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for face in mesh.faces.iter() {
+        if !face.alive {
+            continue;
+        }
+        let mut vert_ids = Vec::new();
+        for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face.id).unwrap()) {
+            vert_ids.push(mesh.halfedge_start_vertex_id(halfedge_id).unwrap());
+        }
+        if i + vert_ids.len() as isize * 2 > count {
+            break;
+        }
+        for j in 0..vert_ids.len() {
+            let cur_id = vert_ids[j] as c_int;
+            let next_id = vert_ids[(j + 1) % vert_ids.len()] as c_int;
+            unsafe {
+                *buffer.offset(i + 0) = cur_id - 1;
+                *buffer.offset(i + 1) = next_id - 1;
+            }
+            i += 2;
+        }
+    }
+    i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_halfedge_normal_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_float, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.halfedge_count * 3) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for face in mesh.faces.iter() {
+        if !face.alive {
+            continue;
+        }
+        let norm = mesh.face_norm(face.id);
+        let face_halfedge_count = FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face.id).unwrap()).into_vec().len();
+        if i + face_halfedge_count as isize * 3 > count {
+            break;
+        }
+        for j in 0..face_halfedge_count {
+            unsafe {
+                *buffer.offset(i + 0) = norm.x;
+                *buffer.offset(i + 1) = norm.y;
+                *buffer.offset(i + 2) = norm.z;
+            }
+            i += 3;
+        }
     }
     i as c_int
 }
@@ -373,7 +448,7 @@ pub extern "C" fn meshlite_get_triangle_normal_array(context: *mut RustContext, 
         }
         i += 3;
     }
-    count as c_int
+    i as c_int
 }
 
 #[no_mangle]
@@ -395,6 +470,32 @@ pub extern "C" fn meshlite_get_edge_index_array(context: *mut RustContext, mesh_
             *buffer.offset(i + 1) = edge.high as c_int - 1;
         }
         i += 2;
+    }
+    i as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_get_edge_normal_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_float, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.edges.len() * 3) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for (_, &halfedge_id) in mesh.edges.iter() {
+        if i + 3 > count {
+            break;
+        }
+        let face_id = mesh.halfedge_face_id(halfedge_id).unwrap();
+        let norm = mesh.face_norm(face_id);
+        unsafe {
+            *buffer.offset(i + 0) = norm.x;
+            *buffer.offset(i + 1) = norm.y;
+            *buffer.offset(i + 2) = norm.z;
+        }
+        i += 3;
     }
     i as c_int
 }

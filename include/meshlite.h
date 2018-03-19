@@ -24,6 +24,10 @@ int meshlite_get_triangle_index_array(void *context, int mesh_id, int *buffer, i
 int meshlite_get_triangle_normal_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
 int meshlite_get_edge_count(void *context, int mesh_id);
 int meshlite_get_edge_index_array(void *context, int mesh_id, int *buffer, int max_buffer_len);
+int meshlite_get_edge_normal_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
+int meshlite_get_halfedge_count(void *context, int mesh_id);
+int meshlite_get_halfedge_index_array(void *context, int mesh_id, int *buffer, int max_buffer_len);
+int meshlite_get_halfedge_normal_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
 int meshlite_build(void *context, float *vertex_position_buffer, int vertex_count, int *face_index_buffer, int face_index_buffer_len);
 int meshlite_bmesh_create(void *context);
 int meshlite_bmesh_add_node(void *context, int bmesh_id, float x, float y, float z, float radius, float thickness);
