@@ -97,12 +97,40 @@ impl Bmesh {
                 other_factors.entry(other_index).or_insert(0.0);
                 neighbors_count += 1;
             }
-            if neighbors_count > 0 {
+            if neighbors_count == 1 {
+                let direct = directs[0];
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
+                let mut vert_ids = Vec::new();
+                for vert in face {
+                    vert_ids.push(self.mesh.add_vertex(vert));
+                }
+                for other_index in neighbors.clone() {
+                    let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
+                    new_cuts.push((edge_index, (vert_ids.clone(), -direct)));
+                }
+                self.mesh.add_vertices(vert_ids);
+            } else if neighbors_count == 2 {
+                let mut order = 0;
+                let direct = (directs[0] - directs[1]) / 2.0;
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
+                let mut vert_ids = Vec::new();
+                for vert in face {
+                    vert_ids.push(self.mesh.add_vertex(vert));
+                }
+                let mut rev_vert_ids = vert_ids.clone();
+                rev_vert_ids.reverse();
+                let cut_faces = vec![vert_ids, rev_vert_ids];
+                let cut_directs = vec![direct, -direct];
+                for other_index in neighbors.clone() {
+                    let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
+                    new_cuts.push((edge_index, (cut_faces[order].clone(), -cut_directs[order])));
+                    order += 1;
+                }
+            } else if neighbors_count >= 3 {
                 let mut cuts : Vec<(Vec<Point3<f32>>, EdgeIndex, NodeIndex, Vector3<f32>)> = Vec::new();
                 let max_round : usize = 10;
                 let factor_step = 1.0 / max_round as f32;
                 for round in 0..max_round {
-                    let mut order = 0;
                     for other_index in neighbors.clone() {
                         let mut direct = self.direct_of_nodes(node_index, other_index);
                         let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
@@ -124,15 +152,8 @@ impl Bmesh {
                         let other_radius = self.graph.node_weight(other_index).unwrap().radius;
                         let dist_factor = 0.4 * (create_radius + origin_moved_distance) / distance;
                         let create_radius = create_radius * (1.0 - dist_factor) + other_radius * dist_factor;
-                        if 1 == neighbors_count {
-                            create_origin -= direct * node_radius;
-                        } else if 2 == neighbors_count {
-                            let pair_direct = directs[(order + 1) % 2];
-                            direct = (direct + ((direct - pair_direct) / 2.0)) / 2.0;
-                        }
                         let face = self.make_cut(create_origin, direct, create_radius);
                         cuts.push((face, edge_index, other_index, direct.normalize()));
-                        order += 1;
                     }
                     let mut intersects = false;
                     for j in 0..cuts.len() {
@@ -167,10 +188,6 @@ impl Bmesh {
                     if added_loops.len() > 1 {
                         let mut wrapper = GiftWrapper::new();
                         wrapper.wrap_vertices(&mut self.mesh, &added_loops);
-                    } else if added_loops.len() == 1 {
-                        let mut rev_vert_ids = added_loops[0].0.clone();
-                        rev_vert_ids.reverse();
-                        self.mesh.add_vertices(rev_vert_ids);
                     }
                 }
             }
