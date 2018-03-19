@@ -139,19 +139,13 @@ impl Bmesh {
                         let other_radius = self.graph.node_weight(other_index).unwrap().radius;
                         let distance = other_position.distance(create_origin);
                         let mut origin_moved_distance = 0.0;
-                        let mut create_radius = node_radius;
                         if round > 0 {
                             let factor = other_factors[&other_index];
-                            origin_moved_distance = distance * factor * 0.8;
+                            origin_moved_distance = distance * factor;
                             create_origin = create_origin + direct * origin_moved_distance;
-                            create_radius = node_radius * (1.0 - factor);
-                            if create_radius < other_radius {
-                                create_radius = other_radius;
-                            }
                         }
-                        let other_radius = self.graph.node_weight(other_index).unwrap().radius;
-                        let dist_factor = 0.4 * (create_radius + origin_moved_distance) / distance;
-                        let create_radius = create_radius * (1.0 - dist_factor) + other_radius * dist_factor;
+                        let dist_factor = (node_radius + origin_moved_distance) / distance;
+                        let create_radius = node_radius * (1.0 - dist_factor) + other_radius * dist_factor;
                         let face = self.make_cut(create_origin, direct, create_radius);
                         cuts.push((face, edge_index, other_index, direct.normalize()));
                     }
