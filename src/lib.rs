@@ -451,15 +451,14 @@ pub extern "C" fn meshlite_bmesh_create(context: *mut RustContext) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn meshlite_bmesh_add_node(context: *mut RustContext, bmesh_id: c_int, x: c_float, y: c_float, z: c_float, radius: c_float) -> c_int {
+pub extern "C" fn meshlite_bmesh_add_node(context: *mut RustContext, bmesh_id: c_int, x: c_float, y: c_float, z: c_float, radius: c_float, thickness: c_float) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
-    println!("rust bmesh_id:{:?} x:{:?} y:{:?} z:{:?} radius:{:?}", bmesh_id, x, y, z, radius);
-    bmesh.add_node(Point3 {x: x, y: y, z: z}, radius) as c_int
+    bmesh.add_node(Point3 {x: x, y: y, z: z}, radius, thickness) as c_int
 }
 
 #[no_mangle]

@@ -93,12 +93,14 @@ fn main() {
     x:1.633484 y:1.411765 z:0.000000 r:0.144590
     x:1.778280 y:0.411765 z:0.000000 r:0.191739
     */
+    /*
     let mut bmesh = Bmesh::new();
     let node1 = bmesh.add_node(Point3 {x:1.633484, y:1.411765, z:0.000000}, 0.144590);
     let node2 = bmesh.add_node(Point3 {x:1.778280, y:0.411765, z:0.000000}, 0.191739);
     bmesh.add_edge(node1, node2);
     let mut mesh = bmesh.generate_mesh(node1);
     mesh.export("test.obj").expect("save file failed");
+    */
 
     /*
     let node0 = bmesh.add_node(Point3 {x: -2.07575, y: 1.53902, z: 0.04122}, 0.25);                                    

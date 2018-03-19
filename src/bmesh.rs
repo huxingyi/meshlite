@@ -12,6 +12,7 @@ use util::*;
 
 struct Node {
     radius: f32,
+    thickness: f32,
     position: Point3<f32>,
     generated: bool,
 }
@@ -33,8 +34,8 @@ impl Bmesh {
         }
     }
 
-    pub fn add_node(&mut self, position: Point3<f32>, radius: f32) -> usize {
-        let node = Node::new(radius, position);
+    pub fn add_node(&mut self, position: Point3<f32>, radius: f32, thickness: f32) -> usize {
+        let node = Node::new(radius, thickness, position);
         self.graph.add_node(node).index()
     }
 
@@ -50,7 +51,7 @@ impl Bmesh {
         direct.normalize()
     }
 
-    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Vec<Point3<f32>> {
+    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, thickness: f32) -> Vec<Point3<f32>> {
         let world_y_axis = Vector3 {x: 0.0, y: 1.0, z: 0.0};
         let mut u = world_y_axis.cross(direct);
         let mut v = u.cross(direct);
@@ -61,7 +62,7 @@ impl Bmesh {
             v = Vector3 {x: 0.0, y: 0.0, z: 1.0};
         }
         let u = u.normalize() * radius;
-        let v = v.normalize() * radius;
+        let v = v.normalize() * thickness;
         let origin = position + direct * radius;
         let mut f = vec![origin - u - v,
             origin + u - v,
@@ -83,6 +84,7 @@ impl Bmesh {
         self.graph.node_weight_mut(node_index).unwrap().generated = true;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
+        let node_thickness = self.graph.node_weight(node_index).unwrap().thickness;
         let mut new_cuts : Vec<(EdgeIndex, (Vec<Id>, Vector3<f32>))> = Vec::new();
         let mut new_indices : Vec<NodeIndex> = Vec::new();
         {
@@ -99,7 +101,7 @@ impl Bmesh {
             }
             if neighbors_count == 1 {
                 let direct = directs[0];
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -112,7 +114,7 @@ impl Bmesh {
             } else if neighbors_count == 2 {
                 let mut order = 0;
                 let direct = (directs[0] - directs[1]) / 2.0;
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -146,7 +148,7 @@ impl Bmesh {
                         }
                         let dist_factor = (node_radius + origin_moved_distance) / distance;
                         let create_radius = node_radius * (1.0 - dist_factor) + other_radius * dist_factor;
-                        let face = self.make_cut(create_origin, direct, create_radius);
+                        let face = self.make_cut(create_origin, direct, create_radius, node_thickness);
                         cuts.push((face, edge_index, other_index, direct.normalize()));
                     }
                     let mut intersects = false;
@@ -215,9 +217,10 @@ impl Bmesh {
 }
 
 impl Node {
-    fn new(radius: f32, position: Point3<f32>) -> Self {
+    fn new(radius: f32, thickness: f32, position: Point3<f32>) -> Self {
         Node {
             radius: radius,
+            thickness: thickness,
             position: position,
             generated: false,
         }
