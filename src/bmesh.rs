@@ -16,15 +16,8 @@ struct Node {
     generated: bool,
 }
 
-struct Face4 {
-    a: Point3<f32>,
-    b: Point3<f32>,
-    c: Point3<f32>,
-    d: Point3<f32>,
-}
-
 struct Edge {
-    cuts: Vec<Id>,
+    cuts: Vec<(Vec<Id>, Vector3<f32>)>,
 }
 
 pub struct Bmesh {
@@ -57,7 +50,7 @@ impl Bmesh {
         direct.normalize()
     }
 
-    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Face4 {
+    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Vec<Point3<f32>> {
         let world_y_axis = Vector3 {x: 0.0, y: 1.0, z: 0.0};
         let mut u = world_y_axis.cross(direct);
         let mut v = u.cross(direct);
@@ -67,19 +60,18 @@ impl Bmesh {
         if v == Vector3::zero() {
             v = Vector3 {x: 0.0, y: 0.0, z: 1.0};
         }
-        println!("u: {:?} v: {:?} direct: {:?}", u, v, direct);
         let u = u.normalize() * radius;
         let v = v.normalize() * radius;
         let origin = position + direct * radius;
-        let mut f = Face4 {a: origin - u - v,
-            b: origin + u - v,
-            c: origin + u + v,
-            d: origin - u + v};
-        if direct.cross(norm(f.a, f.b, f.c)) == Vector3::zero() {
-            f = Face4 {a: origin - u + v,
-                b: origin + u + v,
-                c: origin + u - v,
-                d: origin - u - v};
+        let mut f = vec![origin - u - v,
+            origin + u - v,
+            origin + u + v,
+            origin - u + v];
+        if direct.cross(norm(f[0], f[1], f[2])) == Vector3::zero() {
+            f = vec![origin - u + v,
+                origin + u + v,
+                origin + u - v,
+                origin - u - v];
         }
         f
     }
@@ -91,7 +83,7 @@ impl Bmesh {
         self.graph.node_weight_mut(node_index).unwrap().generated = true;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
-        let mut new_faces : Vec<(EdgeIndex, Id)> = Vec::new();
+        let mut new_cuts : Vec<(EdgeIndex, (Vec<Id>, Vector3<f32>))> = Vec::new();
         let mut new_indices : Vec<NodeIndex> = Vec::new();
         {
             let neighbors = self.graph.neighbors_undirected(node_index);
@@ -101,80 +93,91 @@ impl Bmesh {
             for other_index in neighbors.clone() {
                 let direct = self.direct_of_nodes(node_index, other_index);
                 directs.push(direct);
+                new_indices.push(other_index);
                 other_factors.entry(other_index).or_insert(0.0);
                 neighbors_count += 1;
             }
-            let mut added_faces = Vec::new();
-            let mut cuts : Vec<(Face4, EdgeIndex, NodeIndex)> = Vec::new();
-            let max_round : usize = 10;
-            let factor_step = 1.0 / max_round as f32;
-            for round in 0..max_round {
-                let mut order = 0;
-                for other_index in neighbors.clone() {
-                    let mut direct = self.direct_of_nodes(node_index, other_index);
-                    let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
-                    let mut create_origin = node_position;
-                    let other_position = self.graph.node_weight(other_index).unwrap().position;
-                    let other_radius = self.graph.node_weight(other_index).unwrap().radius;
-                    let distance = other_position.distance(create_origin);
-                    let mut origin_moved_distance = 0.0;
-                    let mut create_radius = node_radius;
-                    if round > 0 {
-                        let factor = other_factors[&other_index];
-                        origin_moved_distance = distance * factor * 0.8;
-                        create_origin = create_origin + direct * origin_moved_distance;
-                        create_radius = node_radius * (1.0 - factor);
-                        if create_radius < other_radius {
-                            create_radius = other_radius;
+            if neighbors_count > 0 {
+                let mut cuts : Vec<(Vec<Point3<f32>>, EdgeIndex, NodeIndex, Vector3<f32>)> = Vec::new();
+                let max_round : usize = 10;
+                let factor_step = 1.0 / max_round as f32;
+                for round in 0..max_round {
+                    let mut order = 0;
+                    for other_index in neighbors.clone() {
+                        let mut direct = self.direct_of_nodes(node_index, other_index);
+                        let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
+                        let mut create_origin = node_position;
+                        let other_position = self.graph.node_weight(other_index).unwrap().position;
+                        let other_radius = self.graph.node_weight(other_index).unwrap().radius;
+                        let distance = other_position.distance(create_origin);
+                        let mut origin_moved_distance = 0.0;
+                        let mut create_radius = node_radius;
+                        if round > 0 {
+                            let factor = other_factors[&other_index];
+                            origin_moved_distance = distance * factor * 0.8;
+                            create_origin = create_origin + direct * origin_moved_distance;
+                            create_radius = node_radius * (1.0 - factor);
+                            if create_radius < other_radius {
+                                create_radius = other_radius;
+                            }
+                        }
+                        let other_radius = self.graph.node_weight(other_index).unwrap().radius;
+                        let dist_factor = 0.4 * (create_radius + origin_moved_distance) / distance;
+                        let create_radius = create_radius * (1.0 - dist_factor) + other_radius * dist_factor;
+                        if 1 == neighbors_count {
+                            create_origin -= direct * node_radius;
+                        } else if 2 == neighbors_count {
+                            let pair_direct = directs[(order + 1) % 2];
+                            direct = (direct + ((direct - pair_direct) / 2.0)) / 2.0;
+                        }
+                        let face = self.make_cut(create_origin, direct, create_radius);
+                        cuts.push((face, edge_index, other_index, direct.normalize()));
+                        order += 1;
+                    }
+                    let mut intersects = false;
+                    for j in 0..cuts.len() {
+                        for k in j + 1..cuts.len() {
+                            let first = &cuts[j].0;
+                            let second = &cuts[k].0;
+                            if is_two_quads_intersect(&vec![first[0], first[1], first[2], first[3]],
+                                    &vec![second[0], second[1], second[2], second[3]]) {
+                                intersects = true;
+                                *other_factors.get_mut(&cuts[j].2).unwrap() += factor_step;
+                                *other_factors.get_mut(&cuts[k].2).unwrap() += factor_step;
+                            }
                         }
                     }
-                    let other_radius = self.graph.node_weight(other_index).unwrap().radius;
-                    let dist_factor = 0.4 * (create_radius + origin_moved_distance) / distance;
-                    let create_radius = create_radius * (1.0 - dist_factor) + other_radius * dist_factor;
-                    if 1 == neighbors_count {
-                        create_origin -= direct * node_radius;
-                    } else if 2 == neighbors_count {
-                        let pair_direct = directs[(order + 1) % 2];
-                        direct = (direct + ((direct - pair_direct) / 2.0)) / 2.0;
+                    if !intersects {
+                        break;
                     }
-                    let face = self.make_cut(create_origin, direct, create_radius);
-                    cuts.push((face, edge_index, other_index));
-                    order += 1;
+                    cuts = Vec::new();
                 }
-                let mut intersects = false;
-                for j in 0..cuts.len() {
-                    for k in j + 1..cuts.len() {
-                        let first = &cuts[j].0;
-                        let second = &cuts[k].0;
-                        if is_two_quads_intersect(&vec![first.a, first.b, first.c, first.d],
-                                &vec![second.a, second.b, second.c, second.d]) {
-                            intersects = true;
-                            *other_factors.get_mut(&cuts[j].2).unwrap() += factor_step;
-                            *other_factors.get_mut(&cuts[k].2).unwrap() += factor_step;
+                if cuts.len() > 0 {
+                    let mut added_loops : Vec<(Vec<Id>, Vector3<f32>)> = Vec::new();
+                    for (face, edge_index, other_index, direct) in cuts {
+                        let mut vert_ids = Vec::new();
+                        for vert in face {
+                            vert_ids.push(self.mesh.add_vertex(vert));
                         }
+                        let mut rev_vert_ids = vert_ids.clone();
+                        rev_vert_ids.reverse();
+                        added_loops.push((rev_vert_ids, direct));
+                        new_cuts.push((edge_index, (vert_ids, -direct)));
                     }
-                }
-                if !intersects {
-                    break;
-                }
-                cuts = Vec::new();
-            }
-            if cuts.len() > 0 {
-                for (face, edge_index, other_index) in cuts {
-                    let new_face_id = self.mesh.add_positions(vec![face.a, face.b, face.c, face.d]);
-                    added_faces.push(new_face_id);
-                    new_faces.push((edge_index, new_face_id));
-                    new_indices.push(other_index);
-                }
-                if added_faces.len() > 1 {
-                    let mut wrapper = GiftWrapper::new();
-                    wrapper.wrap_faces(&mut self.mesh, &added_faces);
+                    if added_loops.len() > 1 {
+                        let mut wrapper = GiftWrapper::new();
+                        wrapper.wrap_vertices(&mut self.mesh, &added_loops);
+                    } else if added_loops.len() == 1 {
+                        let mut rev_vert_ids = added_loops[0].0.clone();
+                        rev_vert_ids.reverse();
+                        self.mesh.add_vertices(rev_vert_ids);
+                    }
                 }
             }
         }
-        for (edge_index, face_id) in new_faces {
+        for (edge_index, cut) in new_cuts {
             let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
-            edge.cuts.push(face_id);
+            edge.cuts.push(cut);
         }
         for other_index in new_indices {
             self.generate_from_node(other_index);
@@ -183,11 +186,13 @@ impl Bmesh {
 
     fn stitch_by_edges(&mut self) {
         for edge in self.graph.edge_weights_mut() {
-            if edge.cuts.len() != 2 {
-                continue;
+            match edge.cuts.len() {
+                2 => {
+                    let mut wrapper = GiftWrapper::new();
+                    wrapper.wrap_vertices(&mut self.mesh, &edge.cuts);
+                },
+                _ => {}
             }
-            let mut wrapper = GiftWrapper::new();
-            wrapper.stitch_two_faces(&mut self.mesh, edge.cuts[0], edge.cuts[1]);
         }
     }
 

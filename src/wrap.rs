@@ -226,12 +226,30 @@ impl GiftWrapper {
         }
     }
 
+    fn add_candidate_vertices(&mut self, mesh: &mut Mesh, vertices: &Vec<Id>, plane_norm: Vector3<f32>, plane_id: usize) {
+        let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
+        for &old_vert_id in vertices {
+            let vertex = mesh.vertex(old_vert_id).unwrap();
+            vertices_index_set.entry(vertex.id).or_insert(self.add_source_vertex(vertex.position, plane_id, vertex.id));
+        }
+        for i in 0..vertices.len() {
+            let old_vert_id = vertices[i];
+            let old_next_vert_id = vertices[(i + 1) % vertices.len()];
+            let &vertex_index = vertices_index_set.get(&old_vert_id).unwrap();
+            let &next_vertex_index = vertices_index_set.get(&old_next_vert_id).unwrap();
+            self.add_startup(next_vertex_index,
+                vertex_index,
+                plane_norm);
+        }
+    }
+
     fn add_candidate_face(&mut self, mesh: &mut Mesh, face_id: Id, reverse: bool) {
         let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
         for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap()) {
             let vertex = mesh.halfedge_start_vertex(halfedge_id).unwrap();
             vertices_index_set.entry(vertex.id).or_insert(self.add_source_vertex(vertex.position, face_id, vertex.id));
         }
+        let plane_norm = mesh.face_norm(face_id);
         for halfedge_id in FaceHalfedgeIterator::new(mesh, mesh.face_first_halfedge_id(face_id).unwrap()) {
             let halfedge_next_id = mesh.halfedge_next_id(halfedge_id).unwrap();
             let next_vertex_id = mesh.halfedge_start_vertex_id(halfedge_next_id).unwrap();
@@ -241,11 +259,11 @@ impl GiftWrapper {
             if reverse {
                 self.add_startup(vertex_index,
                     next_vertex_index,
-                    -mesh.face_norm(face_id));
+                    -plane_norm);
             } else {
                 self.add_startup(next_vertex_index,
                     vertex_index,
-                    mesh.face_norm(face_id));
+                    plane_norm);
             }
         }
     }
@@ -333,6 +351,16 @@ impl GiftWrapper {
     pub fn wrap_faces(&mut self, mesh: &mut Mesh, faces: &Vec<Id>) {
         for &face_id in faces {
             self.add_candidate_face(mesh, face_id, true);
+        }
+        self.generate();
+        self.finalize(mesh);
+    }
+
+    pub fn wrap_vertices(&mut self, mesh: &mut Mesh, vertices: &Vec<(Vec<Id>, Vector3<f32>)>) {
+        let mut next_plane_id = 1;
+        for vert in vertices {
+            self.add_candidate_vertices(mesh, &vert.0, vert.1, next_plane_id);
+            next_plane_id += 1;
         }
         self.generate();
         self.finalize(mesh);
