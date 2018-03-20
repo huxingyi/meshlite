@@ -7,6 +7,7 @@ extern "C" {
 
 void *meshlite_create_context(void);
 int meshlite_destroy_context(void *context);
+int meshlite_merge(void *context, int first_mesh_id, int second_mesh_id);
 int meshlite_import(void *context, const char *filename);
 int meshlite_export(void *context, int mesh_id, const char *filename);
 int meshlite_clone(void *context, int from_mesh_id);

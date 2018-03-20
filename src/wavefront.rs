@@ -22,6 +22,8 @@ impl Export for Mesh {
         let mut i = 0;
         let mut vertices = Vec::new();
         let mut vertices_index_set : HashMap<Id, usize> = HashMap::new();
+        writeln!(f, "# Export by meshlite")?;
+        writeln!(f, "# https://github.com/huxingyi/meshlite")?;
         {
             let mut face_iter = FaceIterator::new(self);
             while let Some(face_id) = face_iter.next() {

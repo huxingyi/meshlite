@@ -159,3 +159,19 @@ pub fn is_point_on_segment(point: Point3<f32>, seg_begin: Point3<f32>, seg_end: 
 pub fn in_same_direct(first: Vector3<f32>, second: Vector3<f32>) -> bool {
     first.dot(second) <= 0.0000001
 }
+
+pub fn find_average_plane_norm(direct: Vector3<f32>, other_directs: Vec<Vector3<f32>>) -> Vector3<f32> {
+    let mut sum_norm = Vector3::zero();
+    let mut num_norm = 0.0;
+    for other_dir in other_directs {
+        let deg = Deg::from(direct.angle(other_dir)).0;
+        if deg >= 5.0 && deg <= 175.0 {
+            sum_norm += direct.cross(other_dir);
+            num_norm += 1.0;
+        }
+    }
+    if (num_norm < SMALL_NUM) {
+        return sum_norm;
+    }
+    sum_norm / num_norm
+}

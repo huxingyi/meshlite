@@ -51,8 +51,14 @@ impl Bmesh {
         direct.normalize()
     }
 
-    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, thickness: f32) -> Vec<Point3<f32>> {
-        let world_y_axis = Vector3 {x: 0.0, y: 1.0, z: 0.0};
+    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, thickness: f32, base_plane_norm: Vector3<f32>) -> Vec<Point3<f32>> {
+        let world_y_axis = {
+            if base_plane_norm == Vector3::zero() {
+                Vector3 {x: 0.0, y: 1.0, z: 0.0}
+            } else {
+                base_plane_norm
+            }
+        };
         let mut u = world_y_axis.cross(direct);
         let mut v = u.cross(direct);
         if u == Vector3::zero() {
@@ -75,6 +81,30 @@ impl Bmesh {
                 origin - u - v];
         }
         f
+    }
+
+    fn find_edge_plane_norm(&self, node_index: NodeIndex, other_index: NodeIndex) -> Vector3<f32> {
+        let mut directs = Vec::new();
+        let edge_direct = self.direct_of_nodes(node_index, other_index);
+        for another_index in self.graph.neighbors_undirected(node_index) {
+            if another_index == other_index {
+                continue;
+            }
+            directs.push(self.direct_of_nodes(node_index, another_index));
+        }
+        if directs.len() == 0 {
+            for another_index in self.graph.neighbors_undirected(other_index) {
+                if another_index == node_index {
+                    continue;
+                }
+                directs.push(self.direct_of_nodes(other_index, another_index));
+            }
+            if directs.len() == 0 {
+                return Vector3::zero();
+            }
+            return find_average_plane_norm(edge_direct, directs);
+        }
+        find_average_plane_norm(edge_direct, directs)
     }
 
     fn generate_from_node(&mut self, node_index: NodeIndex) {
@@ -101,7 +131,8 @@ impl Bmesh {
             }
             if neighbors_count == 1 {
                 let direct = directs[0];
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness,
+                    self.find_edge_plane_norm(node_index, new_indices[0]));
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -114,7 +145,8 @@ impl Bmesh {
             } else if neighbors_count == 2 {
                 let mut order = 0;
                 let direct = (directs[0] - directs[1]) / 2.0;
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness,
+                    self.find_edge_plane_norm(node_index, new_indices[0]));
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -148,7 +180,8 @@ impl Bmesh {
                         }
                         let dist_factor = (node_radius + origin_moved_distance) / distance;
                         let create_radius = node_radius * (1.0 - dist_factor) + other_radius * dist_factor;
-                        let face = self.make_cut(create_origin, direct, create_radius, node_thickness);
+                        let face = self.make_cut(create_origin, direct, create_radius, node_thickness,
+                            self.find_edge_plane_norm(node_index, other_index));
                         cuts.push((face, edge_index, other_index, direct.normalize()));
                     }
                     let mut intersects = false;

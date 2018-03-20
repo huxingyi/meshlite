@@ -134,6 +134,21 @@ pub extern "C" fn meshlite_export(context: *mut RustContext, mesh_id: c_int, fil
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_merge(context: *mut RustContext, first_mesh_id: c_int, second_mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let mut new_mesh = Mesh::new();
+    new_mesh.add_mesh(ctx.meshes.get((first_mesh_id - 1) as usize).unwrap());
+    new_mesh.add_mesh(ctx.meshes.get((second_mesh_id - 1) as usize).unwrap());
+    ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
+    new_mesh_id
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_clone(context: *mut RustContext, from_mesh_id: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
