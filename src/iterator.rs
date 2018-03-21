@@ -90,6 +90,9 @@ impl<'a> Iterator for FaceHalfedgeIterator<'a> {
 
     fn next(&mut self) -> Option<Id> {
         let id = self.current_id;
+        if self.mesh.halfedge_start_vertex(id).is_none() {
+            return None;
+        }
         self.current_id = self.mesh.halfedge(self.current_id).unwrap().next;
         if id == self.stop_id && self.index > 0 {
             return None;

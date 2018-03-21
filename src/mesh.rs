@@ -290,7 +290,11 @@ impl Mesh {
     }
 
     pub fn set_halfedge_opposite_id(&mut self, halfedge_id: Id, opposite_id: Id) {
-        self.halfedge_mut(halfedge_id).unwrap().opposite = opposite_id;
+        let halfedge = self.halfedge_mut(halfedge_id);
+        if halfedge.is_none() {
+            return;
+        }
+        halfedge.unwrap().opposite = opposite_id;
     }
 
     fn remove_halfedges_from_edges(&mut self, halfedges: &Vec<Id>) {
@@ -324,29 +328,36 @@ impl Mesh {
     }
 
     pub fn remove_face(&mut self, id: Id) {
+        println!("remove_face begin face_id:{:?}", id);
         let halfedge_collection = FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(id).unwrap()).into_vec();
         self.remove_halfedges_from_edges(&halfedge_collection);
-        for halfedge_id in halfedge_collection {
+        for &halfedge_id in halfedge_collection.iter() {
+            println!("halfedge_id:{:?}", halfedge_id);
             let vertex_id = self.halfedge_start_vertex_id(halfedge_id).unwrap();
-            let opposite = self.halfedge_opposite_id(halfedge_id);
-            if !opposite.is_none() {
-                self.set_halfedge_opposite_id(opposite.unwrap(), 0);
-            }
             if self.vertex_first_halfedge_id(vertex_id).unwrap() == halfedge_id {
                 let alt_id = self.halfedge_start_vertex_alt_halfedge_id(halfedge_id);
                 if alt_id.is_none() {
+                    println!("no alt halfedge for vertex vertex_id:{:?}", vertex_id);
                     self.set_vertex_first_halfedge_id(vertex_id, 0);
                     self.vertex_mut(vertex_id).unwrap().alive = false;
                     self.vertex_count -= 1;
                 } else {
+                    println!("set alt halfedge for vertex vertex_id:{:?} alt_id:{:?}", vertex_id, alt_id.unwrap());
                     self.set_vertex_first_halfedge_id(vertex_id, alt_id.unwrap());
                 }
+            }
+        }
+        for &halfedge_id in halfedge_collection.iter() {
+            let opposite = self.halfedge_opposite_id(halfedge_id);
+            if !opposite.is_none() {
+                self.set_halfedge_opposite_id(opposite.unwrap(), 0);
             }
             self.halfedge_mut(halfedge_id).unwrap().alive = false;
             self.halfedge_count -= 1;
         }
         self.face_mut(id).unwrap().alive = false;
         self.face_count -= 1;
+        println!("remove_face end face_id:{:?}", id);
     }
 
     pub fn face_mut(&mut self, id: Id) -> Option<&mut Face> {
@@ -479,6 +490,9 @@ impl Mesh {
 
     pub fn add_vertices(&mut self, added_vertices : Vec<Id>) -> Id {
         assert!(added_vertices.len() < 1000);
+        if added_vertices.is_empty() {
+            return 0;
+        }
         let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
         for i in 0..added_vertices.len() {
             if self.vertex(added_vertices[i]).is_none() {
@@ -492,6 +506,9 @@ impl Mesh {
     }
 
     pub fn add_positions(&mut self, added_positions : Vec<Point3<f32>>) -> Id {
+        if added_positions.is_empty() {
+            return 0;
+        }
         let mut added_vertices : Vec<Id> = Vec::new();
         for i in 0..added_positions.len() {
             added_vertices.push(self.add_vertex(added_positions[i]));
@@ -501,6 +518,9 @@ impl Mesh {
 
     pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
         assert!(added_halfedges.len() < 1000);
+        if added_halfedges.is_empty() {
+            return 0;
+        }
         let added_face_id = self.add_face();
         for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
             self.vertex_mut(added_vertex_id).unwrap().halfedge = added_halfedge_id;
@@ -619,13 +639,15 @@ impl Mesh {
     }
 
     pub fn add_mesh(&mut self, other: &Mesh) {
-        let mut vertices_set : HashMap<Point3Key, Id> = HashMap::new();
+        let mut vertices_set : HashMap<Id, Id> = HashMap::new();
         for face_id in FaceIterator::new(&other) {
+            println!("face_id:{:?}", face_id);
             let face = other.face(face_id).unwrap();
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
             for halfedge_id in FaceHalfedgeIterator::new(&other, face.halfedge) {
+                println!("halfedge_id:{:?}", halfedge_id);
                 let vertex = other.halfedge_start_vertex(halfedge_id).unwrap();
-                let key = Point3Key::new(vertex.position);
+                let key = vertex.id;
                 if let Some(&new_vertex_id) = vertices_set.get(&key) {
                     added_halfedges.push((self.add_halfedge(), new_vertex_id));
                 } else {

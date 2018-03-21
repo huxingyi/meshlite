@@ -145,6 +145,22 @@ impl GiftWrapper {
         angle.0
     }
 
+    pub fn finished(&mut self) -> bool {
+        if self.candidates.is_empty() {
+            return true;
+        }
+        let mut rm_vec : Vec<usize> = Vec::new();
+        for (i, &it) in self.candidates.iter().enumerate() {
+            if self.is_vertex_closed(it) {
+                rm_vec.push(i);
+            }
+        }
+        for &i in rm_vec.iter().rev() {
+            self.candidates.swap_remove(i);
+        }
+        self.candidates.is_empty()
+    }
+
     fn find_best_vertex_on_the_left(&mut self, item_index: usize) -> Option<usize> {
         let mut max_angle = 0 as f32;
         let mut choosen_it = None;

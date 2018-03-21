@@ -7,23 +7,53 @@ use mesh::Id;
 use petgraph::prelude::*;
 use petgraph::Graph;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use wrap::GiftWrapper;
 use util::*;
+use iterator::FaceIterator;
+use iterator::FaceHalfedgeIterator;
 
 struct Node {
     radius: f32,
     thickness: f32,
     position: Point3<f32>,
     generated: bool,
+    triangle_ring_resolved: bool,
+    quad_ring_resolved: bool,
 }
 
 struct Edge {
     cuts: Vec<(Vec<Id>, Vector3<f32>)>,
 }
 
+struct Ring {
+    pub key: Vec<NodeIndex>,
+    pub nodes: Vec<NodeIndex>
+}
+
+impl Ring {
+    pub fn new(first: NodeIndex, second: NodeIndex, third: NodeIndex, fourth: NodeIndex) -> Self {
+        let mut nodes = Vec::new();
+        nodes.push(first);
+        nodes.push(second);
+        nodes.push(third);
+        if fourth != NodeIndex::end() {
+            nodes.push(fourth);
+        }
+        let mut key = nodes.clone();
+        key.sort();
+        Ring {
+            key: key,
+            nodes: nodes,
+        }
+    }
+}
+
 pub struct Bmesh {
     graph : Graph<Node, Edge, Undirected>,
     mesh: Mesh,
+    resolve_ring_map: HashSet<Vec<NodeIndex>>,
+    resolve_ring_list: Vec<Vec<NodeIndex>>,
 }
 
 impl Bmesh {
@@ -31,6 +61,8 @@ impl Bmesh {
         Bmesh {
             graph: Graph::new_undirected(),
             mesh: Mesh::new(),
+            resolve_ring_map: HashSet::new(),
+            resolve_ring_list: Vec::new(),
         }
     }
 
@@ -102,9 +134,152 @@ impl Bmesh {
             if directs.len() == 0 {
                 return Vector3::zero();
             }
-            return find_average_plane_norm(edge_direct, directs);
+        }
+        if directs.len() > 2 {
+            return Vector3::zero();
         }
         find_average_plane_norm(edge_direct, directs)
+    }
+
+    fn resolve_triangle_ring_from_node(&mut self, node_index: NodeIndex) {
+        if self.graph.node_weight(node_index).unwrap().triangle_ring_resolved {
+            return;
+        }
+        self.graph.node_weight_mut(node_index).unwrap().triangle_ring_resolved = true;
+        let mut other_node_indices : Vec<NodeIndex> = Vec::new();
+        {
+            let neighbors = self.graph.neighbors_undirected(node_index);
+            for other_index in neighbors.clone() {
+                other_node_indices.push(other_index);
+            }
+        }
+        for i in 0..other_node_indices.len() {
+            let first_index = other_node_indices[i];
+            for j in i + 1..other_node_indices.len() {
+                let second_index = other_node_indices[j];
+                    if !self.graph.find_edge_undirected(first_index, second_index).is_none() {
+                        // found triangle: first_index, node_index, second_index
+                        let ring = Ring::new(first_index, node_index, second_index, NodeIndex::end());
+                        if !self.resolve_ring_map.contains(&ring.key) {
+                            self.resolve_ring_map.insert(ring.key);
+                            self.resolve_ring_list.push(ring.nodes);
+                        }
+                    }
+            }
+        }
+        for other_index in other_node_indices {
+            self.resolve_triangle_ring_from_node(other_index);
+        }
+    }
+
+    fn resolve_quad_ring_from_node(&mut self, node_index: NodeIndex) {
+        if self.graph.node_weight(node_index).unwrap().quad_ring_resolved {
+            return;
+        }
+        self.graph.node_weight_mut(node_index).unwrap().quad_ring_resolved = true;
+        let mut other_node_indices : Vec<NodeIndex> = Vec::new();
+        {
+            let neighbors = self.graph.neighbors_undirected(node_index);
+            for other_index in neighbors.clone() {
+                other_node_indices.push(other_index);
+            }
+        }
+        for i in 0..other_node_indices.len() {
+            let first_index = other_node_indices[i];
+            for j in i + 1..other_node_indices.len() {
+                let second_index = other_node_indices[j];
+                    if self.graph.find_edge_undirected(first_index, second_index).is_none() {
+                        let mut found_index = NodeIndex::end();
+                        for third_index in self.graph.neighbors_undirected(first_index) {
+                            if third_index != node_index && !self.graph.find_edge_undirected(third_index, second_index).is_none() {
+                                found_index = third_index;
+                                break;
+                            }
+                        }
+                        if found_index != NodeIndex::end() {
+                            // found quad: first_index, node_index, second_index, found_index
+                            let ring = Ring::new(first_index, node_index, second_index, found_index);
+                            if !self.resolve_ring_map.contains(&ring.key) &&
+                                    !self.resolve_ring_map.contains(&Ring::new(first_index, node_index, second_index, NodeIndex::end()).key) &&
+                                    !self.resolve_ring_map.contains(&Ring::new(node_index, second_index, found_index, NodeIndex::end()).key) &&
+                                    !self.resolve_ring_map.contains(&Ring::new(second_index, found_index, first_index, NodeIndex::end()).key) &&
+                                    !self.resolve_ring_map.contains(&Ring::new(found_index, first_index, node_index, NodeIndex::end()).key) {
+                                self.resolve_ring_map.insert(ring.key);
+                                self.resolve_ring_list.push(ring.nodes);
+                            }
+                        }
+                    }
+            }
+        }
+        for other_index in other_node_indices {
+            self.resolve_triangle_ring_from_node(other_index);
+        }
+    }
+
+    fn get_ring_center(&self, ring: &Vec<NodeIndex>) -> Point3<f32> {
+        let mut positions = Vec::new();
+        for &node_index in ring {
+            positions.push(self.graph.node_weight(node_index).unwrap().position);
+        }
+        Point3::centroid(&positions)
+    }
+
+    fn do_resolve_ring(&mut self, ring: Vec<NodeIndex>) {
+        let mut halfshared_indices = HashSet::new();
+        let center = self.get_ring_center(&ring);
+        for i in 0..ring.len() {
+            let first_node = ring[i];
+            let second_node = ring[(i + 1) % ring.len()];
+            let edge_index = self.graph.find_edge_undirected(first_node, second_node).unwrap().0;
+            let ref edge = self.graph.edge_weight(edge_index).unwrap();
+            for cut in &edge.cuts {
+                let mut vert_indices = HashSet::new();
+                for &vert_id in cut.0.iter() {
+                    vert_indices.insert(vert_id);
+                }
+                // Pick the inner side vertices of the cut face
+                let mut sort_list : Vec<(Id, f32)> = Vec::new();
+                for vert_id in vert_indices {
+                    let vertex = self.mesh.vertex(vert_id);
+                    if vertex.is_none() {
+                        continue;
+                    }
+                    let vertex_position = vertex.unwrap().position;
+                    sort_list.push((vert_id, vertex_position.distance2(center)));
+                }
+                sort_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                for j in 0..sort_list.len() / 2 {
+                    halfshared_indices.insert(sort_list[j].0);
+                }
+            }
+        }
+        let mut remove_face_id_list : Vec<Id> = Vec::new();
+        for face_id in FaceIterator::new(&self.mesh) {
+            let mut need_remove = true;
+            for halfedge_id in FaceHalfedgeIterator::new(&self.mesh, self.mesh.face_first_halfedge_id(face_id).unwrap()) {
+                let vert_id = self.mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
+                if !halfshared_indices.contains(&vert_id) {
+                    need_remove = false;
+                    break;
+                }
+            }
+            if need_remove {
+                remove_face_id_list.push(face_id);
+            }
+        }
+        for face_id in remove_face_id_list {
+            self.mesh.remove_face(face_id);
+        }
+    }
+
+    fn resolve_ring_from_node(&mut self, node_index: NodeIndex) {
+        {
+            self.resolve_triangle_ring_from_node(node_index);
+            self.resolve_quad_ring_from_node(node_index);
+        }
+        for ring in self.resolve_ring_list.clone() {
+            self.do_resolve_ring(ring);
+        }
     }
 
     fn generate_from_node(&mut self, node_index: NodeIndex) {
@@ -116,23 +291,21 @@ impl Bmesh {
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
         let node_thickness = self.graph.node_weight(node_index).unwrap().thickness;
         let mut new_cuts : Vec<(EdgeIndex, (Vec<Id>, Vector3<f32>))> = Vec::new();
-        let mut new_indices : Vec<NodeIndex> = Vec::new();
+        let mut other_node_indices : Vec<NodeIndex> = Vec::new();
         {
             let neighbors = self.graph.neighbors_undirected(node_index);
             let mut neighbors_count = 0;
             let mut directs = Vec::new();
-            let mut other_factors : HashMap<NodeIndex, f32> = HashMap::new();
             for other_index in neighbors.clone() {
                 let direct = self.direct_of_nodes(node_index, other_index);
                 directs.push(direct);
-                new_indices.push(other_index);
-                other_factors.entry(other_index).or_insert(0.0);
+                other_node_indices.push(other_index);
                 neighbors_count += 1;
             }
             if neighbors_count == 1 {
                 let direct = directs[0];
                 let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness,
-                    self.find_edge_plane_norm(node_index, new_indices[0]));
+                    self.find_edge_plane_norm(node_index, other_node_indices[0]));
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -146,7 +319,7 @@ impl Bmesh {
                 let mut order = 0;
                 let direct = (directs[0] - directs[1]) / 2.0;
                 let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness,
-                    self.find_edge_plane_norm(node_index, new_indices[0]));
+                    self.find_edge_plane_norm(node_index, other_node_indices[0]));
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -162,7 +335,7 @@ impl Bmesh {
                 }
             } else if neighbors_count >= 3 {
                 let mut cuts : Vec<(Vec<Point3<f32>>, EdgeIndex, NodeIndex, Vector3<f32>)> = Vec::new();
-                let max_round : usize = 10;
+                let max_round : usize = 25;
                 let factor_step = 1.0 / max_round as f32;
                 for round in 0..max_round {
                     for other_index in neighbors.clone() {
@@ -174,35 +347,45 @@ impl Bmesh {
                         let distance = other_position.distance(create_origin);
                         let mut origin_moved_distance = 0.0;
                         if round > 0 {
-                            let factor = other_factors[&other_index];
-                            origin_moved_distance = distance * factor;
+                            let factor = factor_step * round as f32;
+                            origin_moved_distance = (distance * 0.49) * factor;
                             create_origin = create_origin + direct * origin_moved_distance;
                         }
                         let dist_factor = (node_radius + origin_moved_distance) / distance;
                         let create_radius = node_radius * (1.0 - dist_factor) + other_radius * dist_factor;
+                        println!("round:{:?} dist_factor:{:?} node_radius:{:?} other_radius:{:?} create_radius:{:?} distance:{:?} moved:{:?}", round, dist_factor, node_radius, other_radius, create_radius, distance, origin_moved_distance);
                         let face = self.make_cut(create_origin, direct, create_radius, node_thickness,
                             self.find_edge_plane_norm(node_index, other_index));
                         cuts.push((face, edge_index, other_index, direct.normalize()));
                     }
-                    let mut intersects = false;
-                    for j in 0..cuts.len() {
-                        for k in j + 1..cuts.len() {
-                            let first = &cuts[j].0;
-                            let second = &cuts[k].0;
-                            if is_two_quads_intersect(&vec![first[0], first[1], first[2], first[3]],
-                                    &vec![second[0], second[1], second[2], second[3]]) {
-                                intersects = true;
-                                *other_factors.get_mut(&cuts[j].2).unwrap() += factor_step;
-                                *other_factors.get_mut(&cuts[k].2).unwrap() += factor_step;
+                    let wrap_ok = {
+                        // test wrap
+                        let mut added_loops : Vec<(Vec<Id>, Vector3<f32>)> = Vec::new();
+                        let mut test_mesh = self.mesh.clone();
+                        for (face, edge_index, other_index, direct) in cuts.clone() {
+                            let mut vert_ids = Vec::new();
+                            for vert in face {
+                                vert_ids.push(test_mesh.add_vertex(vert));
                             }
+                            let mut rev_vert_ids = vert_ids.clone();
+                            rev_vert_ids.reverse();
+                            added_loops.push((rev_vert_ids, direct));
                         }
-                    }
-                    if !intersects {
+                        if added_loops.len() > 1 {
+                            let mut wrapper = GiftWrapper::new();
+                            wrapper.wrap_vertices(&mut test_mesh, &added_loops);
+                            wrapper.finished()
+                        } else {
+                            false
+                        }
+                    };
+                    if wrap_ok {
                         break;
                     }
                     cuts = Vec::new();
                 }
                 if cuts.len() > 0 {
+                    // real wrap
                     let mut added_loops : Vec<(Vec<Id>, Vector3<f32>)> = Vec::new();
                     for (face, edge_index, other_index, direct) in cuts {
                         let mut vert_ids = Vec::new();
@@ -217,6 +400,7 @@ impl Bmesh {
                     if added_loops.len() > 1 {
                         let mut wrapper = GiftWrapper::new();
                         wrapper.wrap_vertices(&mut self.mesh, &added_loops);
+                        wrapper.finished();
                     }
                 }
             }
@@ -225,7 +409,7 @@ impl Bmesh {
             let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
             edge.cuts.push(cut);
         }
-        for other_index in new_indices {
+        for other_index in other_node_indices {
             self.generate_from_node(other_index);
         }
     }
@@ -243,8 +427,10 @@ impl Bmesh {
     }
 
     pub fn generate_mesh(&mut self, root: usize) -> &mut Mesh {
-        self.generate_from_node(NodeIndex::new(root));
+        let root_node = NodeIndex::new(root);
+        self.generate_from_node(root_node);
         self.stitch_by_edges();
+        self.resolve_ring_from_node(root_node);
         &mut self.mesh
     }
 }
@@ -256,6 +442,8 @@ impl Node {
             thickness: thickness,
             position: position,
             generated: false,
+            triangle_ring_resolved: false,
+            quad_ring_resolved: false,
         }
     }
 }
