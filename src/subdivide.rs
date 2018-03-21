@@ -9,7 +9,6 @@ use mesh::Mesh;
 use mesh::Id;
 use iterator::FaceIterator;
 use iterator::FaceHalfedgeIterator;
-use iterator::VertexEdgeIterator;
 use std::mem;
 
 struct FaceData {
@@ -122,9 +121,8 @@ impl<'a> CatmullClarkSubdivider<'a> {
         let mut vec = Vec::new();
         let vertex_position = self.mesh.vertex(id).unwrap().position;
         {
-            let mut edge_iter = VertexEdgeIterator::new(self.mesh,
-                self.mesh.vertex(id).unwrap().halfedge);
-            while let Some(halfedge_id) = edge_iter.next() {
+            let mut edge_iter = self.mesh.vertex(id).unwrap().halfedges.iter();
+            while let Some(&halfedge_id) = edge_iter.next() {
                 let halfedge_face_id = self.mesh.halfedge(halfedge_id).unwrap().face;
                 vec.push((halfedge_id, halfedge_face_id));
             }
@@ -176,7 +174,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
                 added_halfedges.push((self.generated_mesh.add_halfedge(), vertex_generated_id));
                 added_halfedges.push((self.generated_mesh.add_halfedge(), e2_vertex_id));
                 for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
-                    self.generated_mesh.vertex_mut(added_vertex_id).unwrap().halfedge = added_halfedge_id;
+                    self.generated_mesh.vertex_mut(added_vertex_id).unwrap().halfedges.insert(added_halfedge_id);
                     self.generated_mesh.halfedge_mut(added_halfedge_id).unwrap().face = added_face_id;
                     self.generated_mesh.halfedge_mut(added_halfedge_id).unwrap().vertex = added_vertex_id;
                 }

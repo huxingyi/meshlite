@@ -23,7 +23,7 @@ pub type Id = usize;
 pub struct Vertex {
     pub id: Id,
     pub position: Point3<f32>,
-    pub halfedge: Id,
+    pub halfedges: HashSet<Id>,
     pub prev: Id,
     pub next: Id,
     pub alive: bool,
@@ -270,25 +270,6 @@ impl Mesh {
         self.vertex(vertex_id)
     }
 
-    pub fn vertex_first_halfedge_id(&self, id: Id) -> Option<Id> {
-        self.vertex(id)
-            .and_then(|v: &Vertex| if 0 != v.halfedge { Some(v.halfedge) } else { None })
-    }
-
-    pub fn vertex_first_halfedge(&self, id: Id) -> Option<&Halfedge> {
-        let halfedge_id = self.vertex_first_halfedge_id(id)?;
-        self.halfedge(halfedge_id)
-    }
-
-    pub fn vertex_first_halfedge_mut(&mut self, id: Id) -> Option<&mut Halfedge> {
-        let halfedge_id = self.vertex_first_halfedge_id(id)?;
-        self.halfedge_mut(halfedge_id)
-    }
-
-    pub fn set_vertex_first_halfedge_id(&mut self, vertex_id: Id, halfedge_id: Id) {
-        self.vertex_mut(vertex_id).unwrap().halfedge = halfedge_id;
-    }
-
     pub fn set_halfedge_opposite_id(&mut self, halfedge_id: Id, opposite_id: Id) {
         let halfedge = self.halfedge_mut(halfedge_id);
         if halfedge.is_none() {
@@ -318,7 +299,10 @@ impl Mesh {
     pub fn halfedge_start_vertex_alt_halfedge_id(&self, halfedge_id: Id) -> Option<Id> {
         let opposite = self.halfedge_opposite_id(halfedge_id);
         if !opposite.is_none() {
-            return self.halfedge_next_id(opposite.unwrap());
+            let next_id = self.halfedge_next_id(opposite.unwrap());
+            if next_id.is_some() {
+                return next_id;
+            }
         }
         let prev = self.halfedge_prev_id(halfedge_id);
         if !prev.is_none() {
@@ -328,23 +312,21 @@ impl Mesh {
     }
 
     pub fn remove_face(&mut self, id: Id) {
-        println!("remove_face begin face_id:{:?}", id);
         let halfedge_collection = FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(id).unwrap()).into_vec();
         self.remove_halfedges_from_edges(&halfedge_collection);
         for &halfedge_id in halfedge_collection.iter() {
-            println!("halfedge_id:{:?}", halfedge_id);
-            let vertex_id = self.halfedge_start_vertex_id(halfedge_id).unwrap();
-            if self.vertex_first_halfedge_id(vertex_id).unwrap() == halfedge_id {
-                let alt_id = self.halfedge_start_vertex_alt_halfedge_id(halfedge_id);
-                if alt_id.is_none() {
-                    println!("no alt halfedge for vertex vertex_id:{:?}", vertex_id);
-                    self.set_vertex_first_halfedge_id(vertex_id, 0);
-                    self.vertex_mut(vertex_id).unwrap().alive = false;
-                    self.vertex_count -= 1;
+            let vertex_count_need_reduce = {
+                let vertex = self.halfedge_start_vertex_mut(halfedge_id).unwrap();
+                vertex.halfedges.remove(&halfedge_id);
+                if vertex.halfedges.is_empty() {
+                    vertex.alive = false;
+                    true
                 } else {
-                    println!("set alt halfedge for vertex vertex_id:{:?} alt_id:{:?}", vertex_id, alt_id.unwrap());
-                    self.set_vertex_first_halfedge_id(vertex_id, alt_id.unwrap());
+                    false
                 }
+            };
+            if vertex_count_need_reduce {
+                self.vertex_count -= 1;
             }
         }
         for &halfedge_id in halfedge_collection.iter() {
@@ -357,7 +339,6 @@ impl Mesh {
         }
         self.face_mut(id).unwrap().alive = false;
         self.face_count -= 1;
-        println!("remove_face end face_id:{:?}", id);
     }
 
     pub fn face_mut(&mut self, id: Id) -> Option<&mut Face> {
@@ -409,7 +390,7 @@ impl Mesh {
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
-            halfedge: 0,
+            halfedges: HashSet::new(),
             prev: 0,
             next: 0,
             position : position,
@@ -470,20 +451,29 @@ impl Mesh {
         new_id
     }
 
-    pub fn add_linked_vertices(&mut self, linked_vertices: HashMap<Id, Id>) -> Id {
+    pub fn add_linked_vertices(&mut self, linked_vertices: &mut HashMap<Id, Id>) -> Id {
+        if linked_vertices.len() == 0 {
+            return 0;
+        }
         let (&first_id, _) = linked_vertices.iter().next().unwrap();
         let mut vert = first_id;
         let mut visited_sets = HashSet::new();
         let mut added_vertices = Vec::new();
         added_vertices.push(first_id);
         visited_sets.insert(first_id);
+        println!("first_id {:?}", first_id);
         while linked_vertices.contains_key(&vert) && linked_vertices[&vert] != first_id {
             vert = linked_vertices[&vert];
+            println!("vert {:?}", vert);
             if visited_sets.contains(&vert) {
+                println!("visited_sets.contains {:?}", vert);
                 return 0;
             }
             visited_sets.insert(vert);
             added_vertices.push(vert);
+        }
+        for vert_id in added_vertices.iter() {
+            linked_vertices.remove(vert_id);
         }
         self.add_vertices(added_vertices)
     }
@@ -523,7 +513,7 @@ impl Mesh {
         }
         let added_face_id = self.add_face();
         for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
-            self.vertex_mut(added_vertex_id).unwrap().halfedge = added_halfedge_id;
+            self.vertex_mut(added_vertex_id).unwrap().halfedges.insert(added_halfedge_id);
             self.halfedge_mut(added_halfedge_id).unwrap().face = added_face_id;
             self.halfedge_mut(added_halfedge_id).unwrap().vertex = added_vertex_id;
         }
@@ -557,9 +547,20 @@ impl Mesh {
                 let old_vertex_id = self.halfedge_start_vertex_id(halfedge_id).unwrap();
                 let copy_position = self.halfedge_start_vertex(halfedge_id).unwrap().position;
                 let copy_vertex = self.add_vertex(copy_position);
-                if self.vertex_first_halfedge_id(old_vertex_id).unwrap() == halfedge_id {
-                    let opposite_next_halfedge_id = self.halfedge_next_id(opposite.unwrap()).unwrap();
-                    self.set_vertex_first_halfedge_id(old_vertex_id, opposite_next_halfedge_id);
+                {
+                    let vertex_count_need_reduce = {
+                        let vertex = self.halfedge_start_vertex_mut(old_vertex_id).unwrap();
+                        vertex.halfedges.remove(&halfedge_id);
+                        if vertex.halfedges.is_empty() {
+                            vertex.alive = false;
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if vertex_count_need_reduce {
+                        self.vertex_count -= 1;
+                    }
                 }
                 self.set_halfedge_start_vertex_id(halfedge_id, copy_vertex);
                 self.unpair_halfedges(halfedge_id, opposite.unwrap());
@@ -641,11 +642,9 @@ impl Mesh {
     pub fn add_mesh(&mut self, other: &Mesh) {
         let mut vertices_set : HashMap<Id, Id> = HashMap::new();
         for face_id in FaceIterator::new(&other) {
-            println!("face_id:{:?}", face_id);
             let face = other.face(face_id).unwrap();
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
             for halfedge_id in FaceHalfedgeIterator::new(&other, face.halfedge) {
-                println!("halfedge_id:{:?}", halfedge_id);
                 let vertex = other.halfedge_start_vertex(halfedge_id).unwrap();
                 let key = vertex.id;
                 if let Some(&new_vertex_id) = vertices_set.get(&key) {
@@ -833,10 +832,10 @@ impl Mesh {
         }
         if fill_cut {
             if front_cut_map.len() >= 3 {
-                front_mesh.add_linked_vertices(front_cut_map);
+                while front_mesh.add_linked_vertices(&mut front_cut_map) > 0 {};
             }
             if back_cut_map.len() >= 3 {
-                back_mesh.add_linked_vertices(back_cut_map);
+                while back_mesh.add_linked_vertices(&mut back_cut_map) > 0 {};
             }
         }
         (front_mesh, back_mesh)

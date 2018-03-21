@@ -265,6 +265,21 @@ impl Bmesh {
         for face_id in remove_face_id_list {
             self.mesh.remove_face(face_id);
         }
+        let mut linked_vertices : HashMap<Id, Id> = HashMap::new();
+        for face_id in FaceIterator::new(&self.mesh) {
+            for halfedge_id in FaceHalfedgeIterator::new(&self.mesh, self.mesh.face_first_halfedge_id(face_id).unwrap()) {
+                if self.mesh.halfedge_opposite_face_id(halfedge_id).is_some() {
+                    continue;
+                }
+                let vert_id = self.mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
+                let next_vert_id = self.mesh.halfedge_start_vertex_id(self.mesh.halfedge_next_id(halfedge_id).unwrap()).unwrap();
+                if shared_indices.contains(&vert_id) && shared_indices.contains(&next_vert_id) {
+                    linked_vertices.entry(next_vert_id).or_insert(vert_id);
+                    println!("link {:?} -> {:?}", next_vert_id, vert_id);
+                }
+            }
+        }
+        while self.mesh.add_linked_vertices(&mut linked_vertices) > 0 {};
     }
 
     fn resolve_ring_from_node(&mut self, node_index: NodeIndex) {
@@ -429,7 +444,7 @@ impl Bmesh {
         self.generate_from_node(root_node);
         if 0 == self.wrap_error_count {
             self.stitch_by_edges();
-            //self.resolve_ring_from_node(root_node);
+            self.resolve_ring_from_node(root_node);
         }
         &mut self.mesh
     }
