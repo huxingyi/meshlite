@@ -217,7 +217,7 @@ impl Bmesh {
             }
         }
         for other_index in other_node_indices {
-            self.resolve_triangle_ring_from_node(other_index);
+            self.resolve_quad_ring_from_node(other_index);
         }
     }
 
