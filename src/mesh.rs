@@ -1000,6 +1000,71 @@ impl Mesh {
         }
         to_mesh
     }
+
+    // The test method (V + F - E = 2) describled by Tobias Gurdan from
+    // https://gamedev.stackexchange.com/questions/61878/how-check-if-an-arbitrary-given-mesh-is-a-single-closed-mesh
+    pub fn is_triangulated_mesh_manifold(&self) -> bool {
+        let mut edges : HashSet<EdgeEndpoints> = HashSet::new();
+        let mut verts : HashSet<Id> = HashSet::new();
+        let mut faces : HashSet<Id> = HashSet::new();
+        for face_id in FaceIterator::new(self) {
+            let mut face_verts = Vec::new();
+            for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
+                let vert_id = self.halfedge_start_vertex_id(halfedge_id);
+                if vert_id.is_none() {
+                    return false;
+                }
+                face_verts.push(vert_id.unwrap());
+            }
+            if face_verts.len() < 3 {
+                return false;
+            } else {
+                for i in 0..face_verts.len() {
+                    let first_vert_id = face_verts[i];
+                    let second_vert_id = face_verts[(i + 1) % face_verts.len()];
+                    let key = EdgeEndpoints::new(first_vert_id, second_vert_id);
+                    edges.insert(key);
+                }
+                verts.extend(face_verts.iter().cloned());
+            }
+            faces.insert(face_id);
+        }
+        verts.len() as isize + faces.len() as isize - edges.len() as isize == 2
+    }
+
+    pub fn broken_face_set(&self) -> HashSet<Id> {
+        let mut broken_face_set = HashSet::new();
+        let mut endpoints : HashMap<EdgeEndpoints, Vec<Id>> = HashMap::new();
+        for face_id in FaceIterator::new(self) {
+            let mut verts = Vec::new();
+            for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
+                let vert_id = self.halfedge_start_vertex_id(halfedge_id);
+                if vert_id.is_none() {
+                    broken_face_set.insert(face_id);
+                    break;
+                }
+                verts.push(vert_id.unwrap());
+            }
+            if verts.len() < 3 {
+                broken_face_set.insert(face_id);
+            } else {
+                for i in 0..verts.len() {
+                    let first_vert_id = verts[i];
+                    let second_vert_id = verts[(i + 1) % verts.len()];
+                    let key = EdgeEndpoints::new(first_vert_id, second_vert_id);
+                    endpoints.entry(key).or_insert(Vec::new()).push(face_id);
+                }
+            }
+        }
+        for (key, face_list) in endpoints {
+            if face_list.len() != 2 {
+                for face_id in face_list {
+                    broken_face_set.insert(face_id);
+                }
+            }
+        }
+        broken_face_set
+    }
 }
 
 impl Add for Mesh {

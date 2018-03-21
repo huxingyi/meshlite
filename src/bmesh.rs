@@ -9,6 +9,7 @@ use petgraph::Graph;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use wrap::GiftWrapper;
+use triangulate::Triangulate;
 use util::*;
 use iterator::FaceIterator;
 use iterator::FaceHalfedgeIterator;
@@ -54,6 +55,7 @@ pub struct Bmesh {
     mesh: Mesh,
     resolve_ring_map: HashSet<Vec<NodeIndex>>,
     resolve_ring_list: Vec<Vec<NodeIndex>>,
+    wrap_error_count: i32,
 }
 
 impl Bmesh {
@@ -63,6 +65,7 @@ impl Bmesh {
             mesh: Mesh::new(),
             resolve_ring_map: HashSet::new(),
             resolve_ring_list: Vec::new(),
+            wrap_error_count: 0,
         }
     }
 
@@ -361,12 +364,13 @@ impl Bmesh {
                             }
                             let mut rev_vert_ids = vert_ids.clone();
                             rev_vert_ids.reverse();
+                            test_mesh.add_vertices(vert_ids);
                             added_loops.push((rev_vert_ids, direct));
                         }
                         if added_loops.len() > 1 {
                             let mut wrapper = GiftWrapper::new();
                             wrapper.wrap_vertices(&mut test_mesh, &added_loops);
-                            wrapper.finished()
+                            wrapper.finished() && test_mesh.broken_face_set().is_empty() && test_mesh.triangulate().is_triangulated_mesh_manifold()
                         } else {
                             false
                         }
@@ -394,6 +398,8 @@ impl Bmesh {
                         wrapper.wrap_vertices(&mut self.mesh, &added_loops);
                         wrapper.finished();
                     }
+                } else {
+                    self.wrap_error_count += 1;
                 }
             }
         }
@@ -421,8 +427,10 @@ impl Bmesh {
     pub fn generate_mesh(&mut self, root: usize) -> &mut Mesh {
         let root_node = NodeIndex::new(root);
         self.generate_from_node(root_node);
-        self.stitch_by_edges();
-        //self.resolve_ring_from_node(root_node);
+        if 0 == self.wrap_error_count {
+            self.stitch_by_edges();
+            //self.resolve_ring_from_node(root_node);
+        }
         &mut self.mesh
     }
 }

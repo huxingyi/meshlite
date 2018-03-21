@@ -57,6 +57,7 @@ pub struct GiftWrapper {
     pub generated_faces: Vec<Face3>,
     generated_face_edges_map: HashMap<WrapItemKey, Option<usize>>,
     generated_vertex_edges_map: HashMap<usize, Vec<usize>>,
+    finalize_finished: bool,
 }
 
 impl GiftWrapper {
@@ -70,6 +71,7 @@ impl GiftWrapper {
             generated_faces: Vec::new(),
             generated_face_edges_map: HashMap::new(),
             generated_vertex_edges_map: HashMap::new(),
+            finalize_finished: false,
         }
     }
 
@@ -146,6 +148,9 @@ impl GiftWrapper {
     }
 
     pub fn finished(&mut self) -> bool {
+        if !self.finalize_finished {
+            return false;
+        }
         if self.candidates.is_empty() {
             return true;
         }
@@ -326,6 +331,7 @@ impl GiftWrapper {
     fn finalize(&mut self, mesh: &mut Mesh) {
         let mut quards : Vec<Face4> = Vec::new();
         let mut used_ids: HashMap<usize, bool> = HashMap::new();
+        self.finalize_finished = true;
         for f in self.generated_faces.iter() {
             if used_ids.contains_key(&f.index) {
                 continue;
@@ -340,7 +346,9 @@ impl GiftWrapper {
             added_vertices.push(self.source_vertices[f.p1].tag);
             added_vertices.push(self.source_vertices[f.p2].tag);
             added_vertices.push(self.source_vertices[f.p3].tag);
-            mesh.add_vertices(added_vertices);
+            if 0 == mesh.add_vertices(added_vertices) {
+                self.finalize_finished = false;
+            }
         }
         for f in quards.iter() {
             let mut added_vertices = Vec::new();
@@ -348,7 +356,9 @@ impl GiftWrapper {
             added_vertices.push(self.source_vertices[f.p2].tag);
             added_vertices.push(self.source_vertices[f.p3].tag);
             added_vertices.push(self.source_vertices[f.p4].tag);
-            mesh.add_vertices(added_vertices);
+            if 0 == mesh.add_vertices(added_vertices) {
+                self.finalize_finished = false;
+            }
         }
     }
 
