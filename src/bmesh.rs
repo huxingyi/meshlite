@@ -135,9 +135,11 @@ impl Bmesh {
                 return Vector3::zero();
             }
         }
+        /*
         if directs.len() > 2 {
             return Vector3::zero();
         }
+        */
         find_average_plane_norm(edge_direct, directs)
     }
 
@@ -225,7 +227,7 @@ impl Bmesh {
     }
 
     fn do_resolve_ring(&mut self, ring: Vec<NodeIndex>) {
-        let mut halfshared_indices = HashSet::new();
+        let mut shared_indices = HashSet::new();
         let center = self.get_ring_center(&ring);
         for i in 0..ring.len() {
             let first_node = ring[i];
@@ -233,35 +235,25 @@ impl Bmesh {
             let edge_index = self.graph.find_edge_undirected(first_node, second_node).unwrap().0;
             let ref edge = self.graph.edge_weight(edge_index).unwrap();
             for cut in &edge.cuts {
-                let mut vert_indices = HashSet::new();
                 for &vert_id in cut.0.iter() {
-                    vert_indices.insert(vert_id);
-                }
-                // Pick the inner side vertices of the cut face
-                let mut sort_list : Vec<(Id, f32)> = Vec::new();
-                for vert_id in vert_indices {
-                    let vertex = self.mesh.vertex(vert_id);
-                    if vertex.is_none() {
-                        continue;
-                    }
-                    let vertex_position = vertex.unwrap().position;
-                    sort_list.push((vert_id, vertex_position.distance2(center)));
-                }
-                sort_list.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-                for j in 0..sort_list.len() / 2 {
-                    halfshared_indices.insert(sort_list[j].0);
+                    shared_indices.insert(vert_id);
                 }
             }
         }
         let mut remove_face_id_list : Vec<Id> = Vec::new();
         for face_id in FaceIterator::new(&self.mesh) {
             let mut need_remove = true;
+            let mut any_point_on_plane = Point3{x:0.0, y:0.0, z:0.0};
             for halfedge_id in FaceHalfedgeIterator::new(&self.mesh, self.mesh.face_first_halfedge_id(face_id).unwrap()) {
                 let vert_id = self.mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
-                if !halfshared_indices.contains(&vert_id) {
+                if !shared_indices.contains(&vert_id) {
                     need_remove = false;
                     break;
                 }
+                any_point_on_plane = self.mesh.vertex(vert_id).unwrap().position;
+            }
+            if need_remove {
+                need_remove = PointSide::Front == point_side_on_plane(center, any_point_on_plane, self.mesh.face_norm(face_id));
             }
             if need_remove {
                 remove_face_id_list.push(face_id);
@@ -430,7 +422,7 @@ impl Bmesh {
         let root_node = NodeIndex::new(root);
         self.generate_from_node(root_node);
         self.stitch_by_edges();
-        self.resolve_ring_from_node(root_node);
+        //self.resolve_ring_from_node(root_node);
         &mut self.mesh
     }
 }

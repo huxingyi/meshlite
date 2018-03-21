@@ -162,12 +162,17 @@ impl GiftWrapper {
     }
 
     fn find_best_vertex_on_the_left(&mut self, item_index: usize) -> Option<usize> {
+        let p1 = self.items[item_index].p1;
+        let p2 = self.items[item_index].p2;
         let mut max_angle = 0 as f32;
         let mut choosen_it = None;
         let mut rm_vec : Vec<usize> = Vec::new();
         for (i, &it) in self.candidates.iter().enumerate() {
             if self.is_vertex_closed(it) {
                 rm_vec.push(i);
+                continue;
+            }
+            if self.is_edge_closed(p1, it) || self.is_edge_closed(p2, it) {
                 continue;
             }
             let mut angle = self.angle_of_base_face_and_point(item_index, it);
