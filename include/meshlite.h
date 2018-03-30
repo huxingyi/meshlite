@@ -12,6 +12,7 @@ int meshlite_import(void *context, const char *filename);
 int meshlite_export(void *context, int mesh_id, const char *filename);
 int meshlite_clone(void *context, int from_mesh_id);
 int meshlite_triangulate(void *context, int mesh_id);
+int meshlite_is_triangulated_manifold(void *context, int mesh_id);
 int meshlite_subdivide(void *context, int mesh_id);
 int meshlite_union(void *context, int first_mesh_id, int second_mesh_id);
 int meshlite_diff(void *context, int first_mesh_id, int second_mesh_id);
@@ -35,6 +36,7 @@ int meshlite_bmesh_add_node(void *context, int bmesh_id, float x, float y, float
 int meshlite_bmesh_add_edge(void *context, int bmesh_id, int first_node_id, int second_node_id);
 int meshlite_bmesh_generate_mesh(void *context, int bmesh_id, int root_node_id);
 int meshlite_bmesh_destroy(void *context, int bmesh_id);
+int meshlite_combine_adj_faces(void *context, int mesh_id);
 
 #ifdef __cplusplus
 }

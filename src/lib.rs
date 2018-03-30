@@ -175,6 +175,17 @@ pub extern "C" fn meshlite_triangulate(context: *mut RustContext, mesh_id: c_int
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_is_triangulated_manifold(context: *mut RustContext, mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let is_manifold = ctx.meshes.get((mesh_id - 1) as usize).unwrap().is_triangulated_mesh_manifold();
+    is_manifold as c_int
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_subdivide(context: *mut RustContext, mesh_id: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
@@ -613,4 +624,17 @@ pub extern "C" fn meshlite_bmesh_destroy(context: *mut RustContext, bmesh_id: c_
     assert_eq!(ctx.magic, MAGIC_NUM);
     free_bmesh_id(ctx, bmesh_id);
     0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_combine_adj_faces(context: *mut RustContext, mesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().combine_adj_faces();
+    ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
+    new_mesh_id
 }
