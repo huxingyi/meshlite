@@ -80,7 +80,7 @@ pub enum SegmentPlaneIntersect {
     Intersection(Point3<f32>),
 }
 
-const SMALL_NUM : f32 = 0.00000001;
+pub const SMALL_NUM : f32 = 0.00000001;
 
 // Modfied from the C++ version intersect3D_SegmentPlane
 // http://geomalgorithms.com/a05-_intersect-1.html
@@ -154,10 +154,6 @@ pub fn is_point_on_segment(point: Point3<f32>, seg_begin: Point3<f32>, seg_end: 
     let t = seg_begin + (v * (w_dot_v / v_dot_v));
     let dist = t.distance(point);
     dist <= 0.00001
-}
-
-pub fn in_same_direct(first: Vector3<f32>, second: Vector3<f32>) -> bool {
-    first.dot(second) <= 0.0000001
 }
 
 pub fn find_average_plane_norm(direct: Vector3<f32>, other_directs: Vec<Vector3<f32>>) -> Vector3<f32> {

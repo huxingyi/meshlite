@@ -88,7 +88,7 @@ impl Bmesh {
 
     fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, thickness: f32, base_plane_norm: Vector3<f32>) -> Vec<Point3<f32>> {
         let world_y_axis = {
-            if base_plane_norm == Vector3::zero() {
+            if base_plane_norm.is_zero() {
                 Vector3 {x: 0.0, y: 1.0, z: 0.0}
             } else {
                 base_plane_norm
@@ -96,10 +96,10 @@ impl Bmesh {
         };
         let mut u = world_y_axis.cross(direct);
         let mut v = u.cross(direct);
-        if u == Vector3::zero() {
+        if u.is_zero() {
             u = Vector3 {x: 1.0, y: 0.0, z: 0.0};
         }
-        if v == Vector3::zero() {
+        if v.is_zero() {
             v = Vector3 {x: 0.0, y: 0.0, z: 1.0};
         }
         let u = u.normalize() * thickness;
@@ -109,7 +109,7 @@ impl Bmesh {
             origin + u - v,
             origin + u + v,
             origin - u + v];
-        if direct.cross(norm(f[0], f[1], f[2])) == Vector3::zero() {
+        if direct.cross(norm(f[0], f[1], f[2])).is_zero() {
             f = vec![origin - u + v,
                 origin + u + v,
                 origin + u - v,

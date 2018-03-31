@@ -903,6 +903,139 @@ impl Mesh {
         self
     }
 
+    pub fn remove_extra_vertices(&self) -> Self {
+        let from_mesh = self;
+        let mut to_mesh = Mesh::new();
+        let mut extra_vertices : HashSet<Id> = HashSet::new();
+        for (_, &halfedge_id) in from_mesh.edges.iter() {
+            let vert_id = from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
+            let prev_id = from_mesh.halfedge_prev_id(halfedge_id).unwrap();
+            let prev_opposite_id = from_mesh.halfedge_opposite_id(prev_id);
+            let opposite_id = from_mesh.halfedge_opposite_id(halfedge_id);
+            if opposite_id.is_none() && prev_opposite_id.is_none() {
+                extra_vertices.insert(vert_id);
+            } else if let Some(opposite_id_val) = opposite_id {
+                if from_mesh.halfedge_next_id(opposite_id_val) == prev_opposite_id {
+                    extra_vertices.insert(vert_id);
+                }
+            }
+        }
+        let mut new_vert_map : HashMap<Id, Id> = HashMap::new();
+        for face_id in FaceIterator::new(from_mesh) {
+            let mut added_vertices : Vec<Id> = Vec::new();
+            for halfedge_id in FaceHalfedgeIterator::new(from_mesh, from_mesh.face_first_halfedge_id(face_id).unwrap()) {
+                let vert_id = from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
+                if extra_vertices.contains(&vert_id) {
+                    continue;
+                }
+                let new_vert_id = *new_vert_map.entry(vert_id).or_insert_with(|| {
+                    to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position)
+                });
+                added_vertices.push(new_vert_id);
+            }
+            to_mesh.add_vertices(added_vertices);
+        }
+        to_mesh
+    }
+
+    pub fn combine_coplanar_faces(&self) -> Self {
+        let from_mesh = self;
+        let mut to_mesh = Mesh::new();
+        let mut coplanar_edges = HashSet::new();
+        let mut coplanar_faces = HashSet::new();
+        let mut coplanar_halfedge_link : HashMap<Id, Id> = HashMap::new();
+        let mut face_norm_map : HashMap<Id, Vector3<f32>> = HashMap::new();
+        for (edge, &halfedge_id) in from_mesh.edges.iter() {
+            let face_id = from_mesh.halfedge_face_id(halfedge_id).unwrap();
+            let face_norm = *face_norm_map.entry(face_id).or_insert_with(|| from_mesh.face_norm(face_id));
+            if let Some(opposite_id) = from_mesh.halfedge_opposite_id(halfedge_id) {
+                let opposite_face_id = from_mesh.halfedge_face_id(opposite_id).unwrap();
+                let opposite_face_norm = *face_norm_map.entry(opposite_face_id).or_insert_with(|| from_mesh.face_norm(opposite_face_id));
+                if almost_eq(face_norm, opposite_face_norm) {
+                    let prev_id = from_mesh.halfedge_prev_id(halfedge_id);
+                    let next_id = from_mesh.halfedge_next_id(halfedge_id);
+                    let opposite_prev_id = from_mesh.halfedge_prev_id(opposite_id);
+                    let opposite_next_id = from_mesh.halfedge_next_id(opposite_id);
+                    if prev_id.is_none() || next_id.is_none() || opposite_prev_id.is_none() || opposite_next_id.is_none() {
+                        continue;
+                    }
+                    let mut dir1 = from_mesh.halfedge_direct(prev_id.unwrap()).normalize().cross(from_mesh.halfedge_direct(opposite_next_id.unwrap()).normalize());
+                    let mut dir2 = from_mesh.halfedge_direct(opposite_prev_id.unwrap()).normalize().cross(from_mesh.halfedge_direct(next_id.unwrap()).normalize());
+                    if dir1.is_zero() {
+                        dir1 = face_norm;
+                    }
+                    if dir2.is_zero() {
+                        dir2 = face_norm;
+                    }
+                    if dir1.dot(dir2) < 0.0 {
+                        continue;
+                    }
+                    coplanar_halfedge_link.insert(halfedge_id, opposite_id);
+                    coplanar_halfedge_link.insert(opposite_id, halfedge_id);
+                    coplanar_edges.insert(edge);
+                    coplanar_faces.insert(face_id);
+                    coplanar_faces.insert(opposite_face_id);
+                }
+            }
+        }
+        let mut new_vert_map : HashMap<Id, Id> = HashMap::new();
+        for face_id in FaceIterator::new(from_mesh) {
+            if !coplanar_faces.contains(&face_id) {
+                let mut added_vertices : Vec<Id> = Vec::new();
+                for halfedge_id in FaceHalfedgeIterator::new(from_mesh, from_mesh.face_first_halfedge_id(face_id).unwrap()) {
+                    let vert_id = from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
+                    let new_vert_id = *new_vert_map.entry(vert_id).or_insert_with(|| {
+                        to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position)
+                    });
+                    added_vertices.push(new_vert_id);
+                }
+                to_mesh.add_vertices(added_vertices);
+            }
+        }
+        let mut used_halfedges : HashSet<Id> = HashSet::new();
+        for face_id in FaceIterator::new(from_mesh) {
+            if coplanar_faces.contains(&face_id) {
+                for halfedge_id in FaceHalfedgeIterator::new(from_mesh, from_mesh.face_first_halfedge_id(face_id).unwrap()) {
+                    if coplanar_halfedge_link.contains_key(&halfedge_id) {
+                        continue;
+                    }
+                    if used_halfedges.contains(&halfedge_id) {
+                        continue;
+                    }
+                    used_halfedges.insert(halfedge_id);
+                    let mut loop_halfedge_id = halfedge_id;
+                    let mut loop_back = false;
+                    let mut loop_halfedges : Vec<Id> = Vec::new();
+                    for _i in 0..100 {
+                        if coplanar_halfedge_link.contains_key(&loop_halfedge_id) {
+                            loop_halfedge_id = from_mesh.halfedge_next_id(coplanar_halfedge_link[&loop_halfedge_id]).unwrap();
+                        } else {
+                            loop_halfedges.push(loop_halfedge_id);
+                            loop_halfedge_id = from_mesh.halfedge_next_id(loop_halfedge_id).unwrap();
+                        }
+                        if halfedge_id == loop_halfedge_id {
+                            loop_back = true;
+                            break;
+                        }
+                    }
+                    if loop_back && loop_halfedges.len() >= 3 {
+                        let mut added_vertices : Vec<Id> = Vec::new();
+                        for &loop_halfedge_id in loop_halfedges.iter() {
+                            used_halfedges.insert(loop_halfedge_id);
+                            let vert_id = from_mesh.halfedge_start_vertex_id(loop_halfedge_id).unwrap();
+                            let new_vert_id = *new_vert_map.entry(vert_id).or_insert_with(|| {
+                                to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position)
+                            });
+                            added_vertices.push(new_vert_id);
+                        }
+                        to_mesh.add_vertices(added_vertices);
+                    }
+                }
+            }
+        }
+        to_mesh.remove_extra_vertices()
+    }
+
     pub fn combine_adj_faces_round(&self) -> (bool, Self) {
         let from_mesh = self;
         let mut to_mesh = Mesh::new();
@@ -911,7 +1044,7 @@ impl Mesh {
         let mut ignore_vert_ids : HashSet<Id> = HashSet::new();
         let mut pending_old_verts : Vec<Vec<Id>> = Vec::new();
         let mut face_pair_map : HashSet<FacePair> = HashSet::new();
-        for (_, &halfedge_id) in self.edges.iter() {
+        for (_, &halfedge_id) in from_mesh.edges.iter() {
             let face_id = from_mesh.halfedge_face_id(halfedge_id).unwrap();
             if ignore_faces.contains(&face_id) {
                 continue;
