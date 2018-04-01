@@ -16,7 +16,6 @@ use iterator::FaceHalfedgeIterator;
 
 struct Node {
     radius: f32,
-    thickness: f32,
     position: Point3<f32>,
     generated: bool,
     triangle_ring_resolved: bool,
@@ -69,8 +68,8 @@ impl Bmesh {
         }
     }
 
-    pub fn add_node(&mut self, position: Point3<f32>, radius: f32, thickness: f32) -> usize {
-        let node = Node::new(radius, thickness, position);
+    pub fn add_node(&mut self, position: Point3<f32>, radius: f32) -> usize {
+        let node = Node::new(radius, position);
         self.graph.add_node(node).index()
     }
 
@@ -86,65 +85,27 @@ impl Bmesh {
         direct.normalize()
     }
 
-    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, thickness: f32, base_plane_norm: Vector3<f32>) -> Vec<Point3<f32>> {
-        let world_y_axis = {
-            if base_plane_norm.is_zero() {
-                Vector3 {x: 0.0, y: 1.0, z: 0.0}
+    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Vec<Point3<f32>> {
+        const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
+        const WORLD_X_AXIS : Vector3<f32> = Vector3 {x: 1.0, y: 0.0, z: 0.0};
+        let mut u = {
+            if direct.dot(WORLD_X_AXIS).abs() > 0.707 {
+                // horizontal
+                direct.cross(WORLD_Y_AXIS)
             } else {
-                base_plane_norm
+                // vertical
+                direct.cross(WORLD_X_AXIS)
             }
         };
-        let mut u = world_y_axis.cross(direct);
         let mut v = u.cross(direct);
-        if u.is_zero() {
-            u = Vector3 {x: 1.0, y: 0.0, z: 0.0};
-        }
-        if v.is_zero() {
-            v = Vector3 {x: 0.0, y: 0.0, z: 1.0};
-        }
-        let u = u.normalize() * thickness;
+        let u = u.normalize() * radius;
         let v = v.normalize() * radius;
         let origin = position + direct * radius;
         let mut f = vec![origin - u - v,
             origin + u - v,
             origin + u + v,
             origin - u + v];
-        if direct.cross(norm(f[0], f[1], f[2])).is_zero() {
-            f = vec![origin - u + v,
-                origin + u + v,
-                origin + u - v,
-                origin - u - v];
-        }
         f
-    }
-
-    fn find_edge_plane_norm(&self, node_index: NodeIndex, other_index: NodeIndex) -> Vector3<f32> {
-        return Vector3::zero();
-        let mut directs = Vec::new();
-        let edge_direct = self.direct_of_nodes(node_index, other_index);
-        for another_index in self.graph.neighbors_undirected(node_index) {
-            if another_index == other_index {
-                continue;
-            }
-            directs.push(self.direct_of_nodes(node_index, another_index));
-        }
-        if directs.len() == 0 {
-            for another_index in self.graph.neighbors_undirected(other_index) {
-                if another_index == node_index {
-                    continue;
-                }
-                directs.push(self.direct_of_nodes(other_index, another_index));
-            }
-            if directs.len() == 0 {
-                return Vector3::zero();
-            }
-        }
-        /*
-        if directs.len() > 2 {
-            return Vector3::zero();
-        }
-        */
-        find_average_plane_norm(edge_direct, directs)
     }
 
     fn resolve_triangle_ring_from_node(&mut self, node_index: NodeIndex) {
@@ -300,7 +261,6 @@ impl Bmesh {
         self.graph.node_weight_mut(node_index).unwrap().generated = true;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
-        let node_thickness = self.graph.node_weight(node_index).unwrap().thickness;
         let mut new_cuts : Vec<(EdgeIndex, (Vec<Id>, Vector3<f32>))> = Vec::new();
         let mut other_node_indices : Vec<NodeIndex> = Vec::new();
         {
@@ -317,8 +277,7 @@ impl Bmesh {
             }
             if neighbors_count == 1 {
                 let direct = directs[0];
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness,
-                    self.find_edge_plane_norm(node_index, other_node_indices[0]));
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -331,8 +290,7 @@ impl Bmesh {
             } else if neighbors_count == 2 {
                 let mut order = 0;
                 let direct = (directs[0] - directs[1]) / 2.0;
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_thickness,
-                    self.find_edge_plane_norm(node_index, other_node_indices[0]));
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -350,38 +308,30 @@ impl Bmesh {
                 let mut cuts : Vec<(Vec<Point3<f32>>, EdgeIndex, NodeIndex, Vector3<f32>)> = Vec::new();
                 let max_round : usize = 25;
                 let factor_step = 1.0 / max_round as f32;
-                let direct_affect_factor = 0.3;
+                const DIRECT_INITIAL_AFFECT_FACTOR : f32 = 0.5;
                 for round in 0..max_round {
                     for other_index in neighbors.clone() {
+                        let factor = factor_step * round as f32;
                         let mut direct = self.direct_of_nodes(node_index, other_index);
                         let mut ave_direct = direct;
                         for &rev_direct in rev_directs.iter() {
                             ave_direct += rev_direct;
                         }
                         ave_direct = ave_direct / (rev_directs.len() - 1) as f32;
-                        direct = ave_direct * direct_affect_factor + direct * (1.0 - direct_affect_factor);
-                        let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
-                        let mut create_origin = node_position;
-                        let other_position = self.graph.node_weight(other_index).unwrap().position;
-                        let mut other_radius = self.graph.node_weight(other_index).unwrap().radius;
-                        let distance = other_position.distance(create_origin);
-                        let mut origin_moved_distance = 0.0;
+                        let mut direct_affect_factor = DIRECT_INITIAL_AFFECT_FACTOR;
                         let mut create_radius = node_radius;
-                        let factor = factor_step * round as f32;
+                        let mut create_origin = node_position;
                         if round > 0 {
-                            origin_moved_distance = (distance * 0.9) * factor;
-                            create_origin = create_origin + direct * origin_moved_distance;
+                            direct_affect_factor += (1.0 - DIRECT_INITIAL_AFFECT_FACTOR) * factor;
+                            create_radius = node_radius * (1.0 - factor);
                         }
-                        let dist_factor = (create_radius + origin_moved_distance) / distance;
-                        create_radius = create_radius * (1.0 - dist_factor) + other_radius * dist_factor;
-                        //if round >= max_round / 2 {
-                        //    let shrink_factor = factor;
-                        //    create_radius = create_radius * (1.0 - shrink_factor);
-                        //}
-                        let mut create_thickness = node_thickness; //node_thickness * create_radius / node_radius;
-                        println!("round:{:?} dist_factor:{:?} create_radius:{:?} other_radius:{:?} create_radius:{:?} distance:{:?} moved:{:?}", round, dist_factor, create_radius, other_radius, create_radius, distance, origin_moved_distance);
-                        let face = self.make_cut(create_origin, direct, create_radius, create_thickness,
-                            self.find_edge_plane_norm(node_index, other_index));
+                        direct = (ave_direct * direct_affect_factor + direct * (1.0 - direct_affect_factor)).normalize();
+                        if round > 0 {
+                            create_origin += direct * (node_radius * factor);
+                        }
+                        let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
+                        println!("round: {:?} other_index:{:?} r:{:?} direct:{:?}", round, other_index, create_radius, direct);
+                        let face = self.make_cut(create_origin, direct, create_radius);
                         cuts.push((face, edge_index, other_index, direct));
                     }
                     let wrap_ok = {
@@ -467,10 +417,9 @@ impl Bmesh {
 }
 
 impl Node {
-    fn new(radius: f32, thickness: f32, position: Point3<f32>) -> Self {
+    fn new(radius: f32, position: Point3<f32>) -> Self {
         Node {
             radius: radius,
-            thickness: thickness,
             position: position,
             generated: false,
             triangle_ring_resolved: false,

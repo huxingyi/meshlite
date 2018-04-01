@@ -634,9 +634,35 @@ impl Mesh {
     }
 
     pub fn weld(&self) -> Self {
-        let mut mesh = Mesh::new();
-        mesh.add_mesh(&self);
-        mesh
+        let mut new_mesh = Mesh::new();
+        let mut vertices_set : HashMap<Point3Key, Id> = HashMap::new();
+        for face_id in FaceIterator::new(&self) {
+            let face = self.face(face_id).unwrap();
+            let mut key_set : HashSet<Point3Key> = HashSet::new();
+            let mut positions : Vec<Point3<f32>> = Vec::new();
+            for halfedge_id in FaceHalfedgeIterator::new(&self, face.halfedge) {
+                let vertex = self.halfedge_start_vertex(halfedge_id).unwrap();
+                let key = Point3Key::new(vertex.position);
+                if key_set.contains(&key) {
+                    continue;
+                }
+                key_set.insert(key);
+                positions.push(vertex.position);
+            }
+            if positions.len() < 3 {
+                continue;
+            }
+            let mut added_vertices : Vec<Id> = Vec::new();
+            for pos in positions.iter() {
+                let key = Point3Key::new(*pos);
+                let new_vert_id = *vertices_set.entry(key).or_insert_with(|| {
+                    new_mesh.add_vertex(*pos)
+                });
+                added_vertices.push(new_vert_id);
+            }
+            new_mesh.add_vertices(added_vertices);
+        }
+        new_mesh
     }
 
     pub fn add_mesh(&mut self, other: &Mesh) {
@@ -1033,7 +1059,7 @@ impl Mesh {
                 }
             }
         }
-        to_mesh.remove_extra_vertices()
+        to_mesh.remove_extra_vertices().weld()
     }
 
     pub fn combine_adj_faces_round(&self) -> (bool, Self) {
