@@ -38,7 +38,7 @@ int meshlite_bmesh_generate_mesh(void *context, int bmesh_id, int root_node_id);
 int meshlite_bmesh_destroy(void *context, int bmesh_id);
 int meshlite_combine_adj_faces(void *context, int mesh_id);
 int meshlite_combine_coplanar_faces(void *context, int mesh_id);
-int meshlite_trim(void *context, int mesh_id);
+int meshlite_trim(void *context, int mesh_id, int normalize);
 
 #ifdef __cplusplus
 }

@@ -653,14 +653,14 @@ pub extern "C" fn meshlite_combine_coplanar_faces(context: *mut RustContext, mes
 }
 
 #[no_mangle]
-pub extern "C" fn meshlite_trim(context: *mut RustContext, mesh_id: c_int) -> c_int {
+pub extern "C" fn meshlite_trim(context: *mut RustContext, mesh_id: c_int, normalize: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
     let new_mesh_id = alloc_mesh_id(ctx);
-    let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().trim();
+    let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().trim(0 != normalize);
     ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
     new_mesh_id
 }

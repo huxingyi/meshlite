@@ -1160,7 +1160,7 @@ impl Mesh {
         to_mesh
     }
 
-    pub fn trim(&self) -> Self {
+    pub fn trim(&self, normalize: bool) -> Self {
         let mut to_mesh = Mesh::new();
         to_mesh.add_mesh(self);
         let mut x_low = f32::MAX;
@@ -1189,10 +1189,28 @@ impl Mesh {
         let x_middle = (x_high + x_low) / 2.0;
         let y_middle = (y_high + y_low) / 2.0;
         let z_middle = (z_high + z_low) / 2.0;
-        for vert in to_mesh.vertices.iter_mut() {
-            vert.position.x -= x_middle;
-            vert.position.y -= y_middle;
-            vert.position.z -= z_middle;
+        if normalize {
+            let x_size = x_high - x_low;
+            let y_size = y_high - y_low;
+            let z_size = z_high - z_low;
+            let mut long_size = y_size;
+            if x_size > long_size {
+                long_size = x_size;
+            }
+            if z_size > long_size {
+                long_size = z_size;
+            }
+            for vert in to_mesh.vertices.iter_mut() {
+                vert.position.x = (vert.position.x - x_middle) / long_size;
+                vert.position.y = (vert.position.y - y_middle) / long_size;
+                vert.position.z = (vert.position.z - z_middle) / long_size;
+            }
+        } else {
+            for vert in to_mesh.vertices.iter_mut() {
+                vert.position.x -= x_middle;
+                vert.position.y -= y_middle;
+                vert.position.z -= z_middle;
+            }
         }
         to_mesh
     }
