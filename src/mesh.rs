@@ -16,6 +16,7 @@ use iterator::FaceIterator;
 use util::*;
 use std::ops::Add;
 use std::ops::AddAssign;
+use std::f32;
 
 pub type Id = usize;
 
@@ -1155,6 +1156,43 @@ impl Mesh {
             combined = sub_combined;
             from_mesh = sub_to_mesh.clone();
             to_mesh = sub_to_mesh;
+        }
+        to_mesh
+    }
+
+    pub fn trim(&self) -> Self {
+        let mut to_mesh = Mesh::new();
+        to_mesh.add_mesh(self);
+        let mut x_low = f32::MAX;
+        let mut x_high = f32::MIN;
+        let mut y_low = f32::MAX;
+        let mut y_high = f32::MIN;
+        let mut z_low = f32::MAX;
+        let mut z_high = f32::MIN;
+        for vert in self.vertices.iter() {
+            if vert.position.x < x_low {
+                x_low = vert.position.x;
+            } else if vert.position.x > x_high {
+                x_high = vert.position.x;
+            }
+            if vert.position.y < y_low {
+                y_low = vert.position.y;
+            } else if vert.position.y > y_high {
+                y_high = vert.position.y;
+            }
+            if vert.position.z < z_low {
+                z_low = vert.position.z;
+            } else if vert.position.z > z_high {
+                z_high = vert.position.z;
+            }
+        }
+        let x_middle = (x_high + x_low) / 2.0;
+        let y_middle = (y_high + y_low) / 2.0;
+        let z_middle = (z_high + z_low) / 2.0;
+        for vert in to_mesh.vertices.iter_mut() {
+            vert.position.x -= x_middle;
+            vert.position.y -= y_middle;
+            vert.position.z -= z_middle;
         }
         to_mesh
     }
