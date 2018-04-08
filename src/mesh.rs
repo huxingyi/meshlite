@@ -1228,6 +1228,10 @@ impl Mesh {
                 if vert_id.is_none() {
                     return false;
                 }
+                let opposite_id = self.halfedge_opposite_id(halfedge_id);
+                if opposite_id.is_none() {
+                    return false;
+                }
                 face_verts.push(vert_id.unwrap());
             }
             if face_verts.len() < 3 {
