@@ -55,7 +55,7 @@ pub struct Bmesh {
     resolve_ring_map: HashSet<Vec<NodeIndex>>,
     resolve_ring_list: Vec<Vec<NodeIndex>>,
     wrap_error_count: i32,
-    default_root_node_id: usize,
+    node_count: usize,
 }
 
 impl Bmesh {
@@ -66,16 +66,14 @@ impl Bmesh {
             resolve_ring_map: HashSet::new(),
             resolve_ring_list: Vec::new(),
             wrap_error_count: 0,
-            default_root_node_id: 0,
+            node_count: 0,
         }
     }
 
     pub fn add_node(&mut self, position: Point3<f32>, radius: f32) -> usize {
         let node = Node::new(radius, position);
         let node_id = self.graph.add_node(node).index();
-        if 0 == self.default_root_node_id {
-            self.default_root_node_id = node_id;
-        }
+        self.node_count += 1;
         node_id
     }
 
@@ -412,20 +410,21 @@ impl Bmesh {
     }
 
     pub fn generate_mesh(&mut self, root: usize) -> &mut Mesh {
-        let root_node_id = {
-            if root > 0 {
-                root
-            } else {
-                self.default_root_node_id
-            }
-        };
-        if root_node_id > 0 {
-            let root_node = NodeIndex::new(root_node_id);
+        let root_node = NodeIndex::new(root);
+        if self.node_count > 1 {
             self.generate_from_node(root_node);
             if 0 == self.wrap_error_count {
                 self.stitch_by_edges();
                 self.resolve_ring_from_node(root_node);
             }
+        } else {
+            let node_position = self.graph.node_weight(root_node).unwrap().position;
+            let node_radius = self.graph.node_weight(root_node).unwrap().radius;
+            let face_id = self.mesh.add_plane(node_radius, node_radius);
+            let normal = self.mesh.face_norm(face_id);
+            self.mesh.extrude_face(face_id, normal, node_radius).translate(node_position.x, 
+                node_position.y, 
+                node_position.z - node_radius * 0.5);
         }
         &mut self.mesh
     }
