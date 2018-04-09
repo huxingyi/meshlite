@@ -134,7 +134,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
         let bury_center = Point3::centroid(&average_of_faces);
         let average_of_edge = Point3::centroid(&average_of_edge_mids);
         let position = (((average_of_edge * 2.0) + bury_center.to_vec()) + 
-                        (vertex_position.to_vec() * ((average_of_faces.len() - 3) as f32))) / 
+                        (vertex_position.to_vec() * ((average_of_faces.len() as i32 - 3).abs() as f32))) / 
             (average_of_faces.len() as f32);
         let generated_vertex_id = self.generated_mesh.add_vertex(position);
         self.vertex_data_set.entry(id).or_insert_with(|| {
