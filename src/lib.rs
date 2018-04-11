@@ -695,3 +695,14 @@ pub extern "C" fn meshlite_bmesh_enable_debug(context: *mut RustContext, bmesh_i
     bmesh.enable_debug(enable != 0);
     0
 }
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_error_count(context: *mut RustContext, bmesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.error_count() as c_int
+}

@@ -38,6 +38,7 @@ int meshlite_bmesh_add_edge(void *context, int bmesh_id, int first_node_id, int 
 int meshlite_bmesh_generate_mesh(void *context, int bmesh_id);
 int meshlite_bmesh_get_node_base_norm(void *context, int bmesh_id, int node_id, float *norm_buffer);
 int meshlite_bmesh_destroy(void *context, int bmesh_id);
+int meshlite_bmesh_error_count(void *context, int bmesh_id);
 int meshlite_combine_adj_faces(void *context, int mesh_id);
 int meshlite_combine_coplanar_faces(void *context, int mesh_id);
 int meshlite_trim(void *context, int mesh_id, int normalize);

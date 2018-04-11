@@ -495,6 +495,10 @@ impl Bmesh {
         }
     }
 
+    pub fn error_count(&self) -> usize {
+        self.wrap_error_count as usize
+    }
+
     pub fn generate_mesh(&mut self) -> &mut Mesh {
         let root_node = NodeIndex::new(self.generate_from_node_id);
         if self.node_count > 1 {
