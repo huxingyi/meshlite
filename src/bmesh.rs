@@ -13,13 +13,16 @@ use triangulate::Triangulate;
 use util::*;
 use iterator::FaceIterator;
 use iterator::FaceHalfedgeIterator;
+use debug::Debug;
 
 struct Node {
     radius: f32,
     position: Point3<f32>,
+    base_norm: Vector3<f32>,
     generated: bool,
     triangle_ring_resolved: bool,
     quad_ring_resolved: bool,
+    base_norm_resolved: bool,
 }
 
 struct Edge {
@@ -52,10 +55,13 @@ impl Ring {
 pub struct Bmesh {
     graph : Graph<Node, Edge, Undirected>,
     mesh: Mesh,
+    neighbor_count_map: HashMap<usize, usize>,
+    neighbor_count_vec: Vec<(usize, usize)>,
     resolve_ring_map: HashSet<Vec<NodeIndex>>,
     resolve_ring_list: Vec<Vec<NodeIndex>>,
     wrap_error_count: i32,
     node_count: usize,
+    debug_enabled: bool,
 }
 
 impl Bmesh {
@@ -63,10 +69,102 @@ impl Bmesh {
         Bmesh {
             graph: Graph::new_undirected(),
             mesh: Mesh::new(),
+            neighbor_count_map: HashMap::new(),
+            neighbor_count_vec: Vec::new(),
             resolve_ring_map: HashSet::new(),
             resolve_ring_list: Vec::new(),
             wrap_error_count: 0,
             node_count: 0,
+            debug_enabled: false,
+        }
+    }
+
+    pub fn enable_debug(&mut self, enable: bool) {
+        self.debug_enabled = enable;
+    }
+
+    pub fn get_node_base_norm(&self, node_id: usize) -> Vector3<f32> {
+        self.graph.node_weight(NodeIndex::new(node_id)).unwrap().base_norm
+    }
+
+    fn resolve_base_norm_for_leaves_from_node(&mut self, node_index: NodeIndex, base_norm: Vector3<f32>) {
+        if self.graph.node_weight(node_index).unwrap().base_norm_resolved {
+            return;
+        }
+        self.graph.node_weight_mut(node_index).unwrap().base_norm_resolved = true;
+        self.graph.node_weight_mut(node_index).unwrap().base_norm = base_norm;
+        let mut indicies = Vec::new();
+        {
+            let neighbors = self.graph.neighbors_undirected(node_index);
+            for other_index in neighbors {
+                indicies.push(other_index);
+            }
+        }
+        for other_index in indicies {
+            match self.neighbor_count_map[&other_index.index()] {
+                1 => self.resolve_base_norm_for_leaves_from_node(other_index, base_norm),
+                2 => {
+                    let edge_base_norm = self.calculate_node_base_norm(other_index);
+                    if edge_base_norm.is_none() {
+                        self.resolve_base_norm_for_leaves_from_node(other_index, base_norm)
+                    } else {
+                        self.resolve_base_norm_for_leaves_from_node(other_index, edge_base_norm.unwrap())
+                    }
+                },
+                _ => {},
+            }
+        }
+    }
+
+    fn calculate_node_base_norm(&self, node_index: NodeIndex) -> Option<Vector3<f32>> {
+        let mut directs : Vec<Vector3<f32>> = Vec::new();
+        let mut positions : Vec<Point3<f32>> = Vec::new();
+        let mut weights : Vec<f32> = Vec::new();
+        let neighbors = self.graph.neighbors_undirected(node_index);
+        for other_index in neighbors {
+            let direct = self.direct_of_nodes(node_index, other_index);
+            let other = self.graph.node_weight(other_index).unwrap();
+            directs.push(direct);
+            positions.push(other.position);
+            weights.push(other.radius);
+        }
+        pick_base_plane_norm(directs, positions, weights)
+    }
+
+    fn resolve_base_norm_from_node(&mut self, node_index: NodeIndex) {
+        if self.graph.node_weight(node_index).unwrap().base_norm_resolved {
+            return;
+        }
+        let base_norm = self.calculate_node_base_norm(node_index);
+        if base_norm.is_none() {
+            const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
+            self.resolve_base_norm_for_leaves_from_node(node_index, WORLD_Y_AXIS);
+            return;
+        }
+        self.resolve_base_norm_for_leaves_from_node(node_index, base_norm.unwrap());
+    }
+
+    fn resolve_base_norm(&mut self) {
+        let mut vec : Vec<(usize, usize)> = Vec::new();
+        for (&k, &v) in self.neighbor_count_map.iter() {
+            vec.push((k, v));
+        }
+        vec.sort_by(|a, b| b.1.cmp(&a.1));
+        for &(node_id, neighbor_count) in vec.iter() {
+            println!("resolve_base_norm node_id:{:?} neighbor_count:{:?}", node_id, neighbor_count);
+            self.resolve_base_norm_from_node(NodeIndex::new(node_id));
+        }
+        self.neighbor_count_vec = vec;
+    }
+
+    fn output_debug_info_if_enabled(&mut self) {
+        if self.debug_enabled {
+            for &(node_id, _) in self.neighbor_count_vec.iter() {
+                let node_index = NodeIndex::new(node_id);
+                let node_origin = self.graph.node_weight(node_index).unwrap().position;
+                let base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
+                self.mesh.add_debug_norm(node_origin, base_norm);
+            }
         }
     }
 
@@ -79,6 +177,8 @@ impl Bmesh {
 
     pub fn add_edge(&mut self, first_node_id: usize, second_node_id: usize) -> usize {
         let edge = Edge::new();
+        *self.neighbor_count_map.entry(first_node_id).or_insert(0) += 1;
+        *self.neighbor_count_map.entry(second_node_id).or_insert(0) += 1;
         self.graph.add_edge(NodeIndex::new(first_node_id), NodeIndex::new(second_node_id), edge).index()
     }
 
@@ -89,27 +189,8 @@ impl Bmesh {
         direct.normalize()
     }
 
-    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32) -> Vec<Point3<f32>> {
-        const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
-        const WORLD_X_AXIS : Vector3<f32> = Vector3 {x: 1.0, y: 0.0, z: 0.0};
-        let mut u = {
-            if direct.dot(WORLD_X_AXIS).abs() > 0.707 {
-                // horizontal
-                direct.cross(WORLD_Y_AXIS)
-            } else {
-                // vertical
-                direct.cross(WORLD_X_AXIS)
-            }
-        };
-        let mut v = u.cross(direct);
-        let u = u.normalize() * radius;
-        let v = v.normalize() * radius;
-        let origin = position + direct * radius;
-        let mut f = vec![origin - u - v,
-            origin + u - v,
-            origin + u + v,
-            origin - u + v];
-        f
+    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_norm: Vector3<f32>) -> Vec<Point3<f32>> {
+        make_quad(position, direct, radius, base_norm)
     }
 
     fn resolve_triangle_ring_from_node(&mut self, node_index: NodeIndex) {
@@ -263,6 +344,7 @@ impl Bmesh {
             return;
         }
         self.graph.node_weight_mut(node_index).unwrap().generated = true;
+        let node_base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
         let mut new_cuts : Vec<(EdgeIndex, (Vec<Id>, Vector3<f32>))> = Vec::new();
@@ -281,7 +363,7 @@ impl Bmesh {
             }
             if neighbors_count == 1 {
                 let direct = directs[0];
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_base_norm);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -294,7 +376,7 @@ impl Bmesh {
             } else if neighbors_count == 2 {
                 let mut order = 0;
                 let direct = (directs[0] - directs[1]) / 2.0;
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_base_norm);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -335,7 +417,7 @@ impl Bmesh {
                         }
                         let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
                         println!("round: {:?} other_index:{:?} r:{:?} direct:{:?}", round, other_index, create_radius, direct);
-                        let face = self.make_cut(create_origin, direct, create_radius);
+                        let face = self.make_cut(create_origin, direct, create_radius, node_base_norm);
                         cuts.push((face, edge_index, other_index, direct));
                     }
                     let wrap_ok = {
@@ -409,14 +491,16 @@ impl Bmesh {
         }
     }
 
-    pub fn generate_mesh(&mut self, root: usize) -> &mut Mesh {
-        let root_node = NodeIndex::new(root);
+    pub fn generate_mesh(&mut self) -> &mut Mesh {
+        let root_node = NodeIndex::new(0);
         if self.node_count > 1 {
+            self.resolve_base_norm();
             self.generate_from_node(root_node);
             if 0 == self.wrap_error_count {
                 self.stitch_by_edges();
                 self.resolve_ring_from_node(root_node);
             }
+            self.output_debug_info_if_enabled();
         } else {
             let node_position = self.graph.node_weight(root_node).unwrap().position;
             let node_radius = self.graph.node_weight(root_node).unwrap().radius;
@@ -435,9 +519,11 @@ impl Node {
         Node {
             radius: radius,
             position: position,
+            base_norm: Vector3::zero(),
             generated: false,
             triangle_ring_resolved: false,
             quad_ring_resolved: false,
+            base_norm_resolved: false,
         }
     }
 }

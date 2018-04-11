@@ -9,6 +9,7 @@ mod wrap;
 mod bmesh;
 mod triangulate;
 mod wavefront;
+mod debug;
 
 use cgmath::Matrix4;
 use cgmath::prelude::*;

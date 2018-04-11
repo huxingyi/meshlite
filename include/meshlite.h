@@ -32,9 +32,11 @@ int meshlite_get_halfedge_index_array(void *context, int mesh_id, int *buffer, i
 int meshlite_get_halfedge_normal_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
 int meshlite_build(void *context, float *vertex_position_buffer, int vertex_count, int *face_index_buffer, int face_index_buffer_len);
 int meshlite_bmesh_create(void *context);
+int meshlite_bmesh_enable_debug(void *context, int bmesh_id, int enable);
 int meshlite_bmesh_add_node(void *context, int bmesh_id, float x, float y, float z, float radius);
 int meshlite_bmesh_add_edge(void *context, int bmesh_id, int first_node_id, int second_node_id);
-int meshlite_bmesh_generate_mesh(void *context, int bmesh_id, int root_node_id);
+int meshlite_bmesh_generate_mesh(void *context, int bmesh_id);
+int meshlite_bmesh_get_node_base_norm(void *context, int bmesh_id, int node_id, float *norm_buffer);
 int meshlite_bmesh_destroy(void *context, int bmesh_id);
 int meshlite_combine_adj_faces(void *context, int mesh_id);
 int meshlite_combine_coplanar_faces(void *context, int mesh_id);

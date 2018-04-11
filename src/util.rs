@@ -4,6 +4,27 @@ use cgmath::prelude::*;
 use cgmath::Deg;
 use cgmath::Rad;
 
+/*
+Range of the Dot Product of Two Unit Vectors
+
+Dot     Angle
+1.000	0 degrees
+0.966	15 degrees
+0.866	30 degrees
+0.707	45 degrees
+0.500	60 degrees
+0.259	75 degrees
+0.000	90 degrees
+-0.259	105 by degrees
+-0.500	120 degrees
+-0.707	135 degrees
+-0.866	150 degrees
+-0.966	165 degrees
+-1.000	180 degrees
+
+Source: http://chortle.ccsu.edu/vectorlessons/vch09/vch09_6.html
+ */
+
 pub fn norm(p1: Point3<f32>, p2: Point3<f32>, p3: Point3<f32>) -> Vector3<f32> {
     let side1 = p2 - p1;
     let side2 = p3 - p1;
@@ -156,18 +177,76 @@ pub fn is_point_on_segment(point: Point3<f32>, seg_begin: Point3<f32>, seg_end: 
     dist <= 0.00001
 }
 
-pub fn find_average_plane_norm(direct: Vector3<f32>, other_directs: Vec<Vector3<f32>>) -> Vector3<f32> {
-    let mut sum_norm = Vector3::zero();
-    let mut num_norm = 0.0;
-    for other_dir in other_directs {
-        let deg = Deg::from(direct.angle(other_dir)).0;
-        if deg >= 5.0 && deg <= 175.0 {
-            sum_norm += direct.cross(other_dir);
-            num_norm += 1.0;
+pub fn pick_base_plane_norm(directs: Vec<Vector3<f32>>, positions: Vec<Point3<f32>>, weights: Vec<f32>) -> Option<Vector3<f32>> {
+    if (directs.len() <= 1) {
+        None
+    } else if (directs.len() <= 2) {
+        // <15 degrees || > 165 degrees
+        if directs[0].dot(directs[1]).abs() > 0.966 {
+            return None;
         }
+        let direct = directs[0].cross(directs[1]);
+        Some(direct)
+    } else if (directs.len() <= 3) {
+        Some(norm(positions[0], positions[1], positions[2]))
+    } else {
+        let mut weighted_indices : Vec<(usize, usize)> = Vec::new();
+        for i in 0..weights.len() {
+            weighted_indices.push((i, (weights[i] * 100.0) as usize));
+        }
+        weighted_indices.sort_by(|a, b| b.1.cmp(&a.1));
+        Some(norm(positions[weighted_indices[0].0], positions[weighted_indices[1].0], positions[weighted_indices[2].0]))
     }
-    if (num_norm < SMALL_NUM) {
-        return sum_norm;
-    }
-    sum_norm / num_norm
+}
+
+pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_norm: Vector3<f32>) -> Vec<Point3<f32>> {
+    let direct_normalized = direct.normalize();
+    let base_norm_normalized = base_norm.normalize();
+    let dot = direct_normalized.dot(base_norm);
+    println!("make_quad begin dot:{:?} direct:{:?}(normalize:{:?}) base_norm:{:?}(normalize:{:?})", 
+        dot, direct, direct_normalized, base_norm, base_norm_normalized);
+    let oriented_base_norm = {
+        if dot > 0.0 {
+            base_norm_normalized
+        } else {
+            println!("base_norm reversed");
+            -base_norm_normalized
+        }
+    };
+    let mut u = {
+        if direct_normalized.dot(oriented_base_norm).abs() > 0.707 {
+            // same direction with < 45 deg
+            println!("< 45 deg");
+            const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
+            const WORLD_X_AXIS : Vector3<f32> = Vector3 {x: 1.0, y: 0.0, z: 0.0};
+            let switched_base_norm = {
+                if oriented_base_norm.dot(WORLD_X_AXIS).abs() > 0.707 {
+                    // horizontal
+                    println!("switch to WORLD_Y_AXIS");
+                    oriented_base_norm.cross(WORLD_Y_AXIS)
+                } else {
+                    // vertical
+                    println!("switch to WORLD_X_AXIS");
+                    oriented_base_norm.cross(WORLD_X_AXIS)
+                }
+            };
+            direct_normalized.cross(switched_base_norm)
+        } else {
+            // same direction with >= 45 deg
+            println!(">= 45 deg");
+            direct_normalized.cross(oriented_base_norm)
+        }
+    };
+    let mut v = u.cross(direct);
+    let u = u.normalize() * radius;
+    let v = v.normalize() * radius;
+    let origin = position + direct * radius;
+    let mut f = vec![origin - u - v,
+        origin + u - v,
+        origin + u + v,
+        origin - u + v];
+    println!("u:{:?} v:{:?}", u, v);
+    println!("f:{:?}", f);
+    println!("make_quad end");
+    f
 }

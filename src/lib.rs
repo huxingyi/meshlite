@@ -12,6 +12,7 @@ mod wrap;
 mod bmesh;
 mod triangulate;
 mod wavefront;
+mod debug;
 
 use cgmath::Point3;
 
@@ -26,6 +27,7 @@ use subdivide::CatmullClarkSubdivider;
 use triangulate::Triangulate;
 use subdivide::Subdivide;
 use iterator::FaceHalfedgeIterator;
+use debug::Debug;
 
 use std::cmp;
 
@@ -601,16 +603,16 @@ pub extern "C" fn meshlite_bmesh_add_edge(context: *mut RustContext, bmesh_id: c
 }
 
 #[no_mangle]
-pub extern "C" fn meshlite_bmesh_generate_mesh(context: *mut RustContext, bmesh_id: c_int, root_node_id: c_int) -> c_int {
+pub extern "C" fn meshlite_bmesh_generate_mesh(context: *mut RustContext, bmesh_id: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
-    println!("rust bmesh_id:{:?} root_node_id:{:?}", bmesh_id, root_node_id);
+    println!("rust bmesh_id:{:?}", bmesh_id);
     let new_mesh_id = alloc_mesh_id(ctx);
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
-    let mesh = bmesh.generate_mesh(root_node_id as usize);
+    let mesh = bmesh.generate_mesh();
     ctx.meshes.insert((new_mesh_id - 1) as usize, mesh.clone());
     new_mesh_id
 }
@@ -663,4 +665,33 @@ pub extern "C" fn meshlite_trim(context: *mut RustContext, mesh_id: c_int, norma
     let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().trim(0 != normalize);
     ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
     new_mesh_id
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_get_node_base_norm(context: *mut RustContext, bmesh_id: c_int, node_id: c_int, norm_buffer: *mut c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    let base_norm = bmesh.get_node_base_norm(node_id as usize);
+    unsafe {
+        *norm_buffer.offset(0) = base_norm.x;
+        *norm_buffer.offset(1) = base_norm.y;
+        *norm_buffer.offset(2) = base_norm.z;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_enable_debug(context: *mut RustContext, bmesh_id: c_int, enable: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.enable_debug(enable != 0);
+    0
 }
