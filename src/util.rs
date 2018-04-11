@@ -203,37 +203,37 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
     let direct_normalized = direct.normalize();
     let base_norm_normalized = base_norm.normalize();
     let dot = direct_normalized.dot(base_norm);
-    println!("make_quad begin dot:{:?} direct:{:?}(normalize:{:?}) base_norm:{:?}(normalize:{:?})", 
-        dot, direct, direct_normalized, base_norm, base_norm_normalized);
+    //println!("make_quad begin dot:{:?} direct:{:?}(normalize:{:?}) base_norm:{:?}(normalize:{:?})", 
+    //    dot, direct, direct_normalized, base_norm, base_norm_normalized);
     let oriented_base_norm = {
         if dot > 0.0 {
             base_norm_normalized
         } else {
-            println!("base_norm reversed");
+            //println!("base_norm reversed");
             -base_norm_normalized
         }
     };
     let mut u = {
         if direct_normalized.dot(oriented_base_norm).abs() > 0.707 {
             // same direction with < 45 deg
-            println!("< 45 deg");
+            //println!("< 45 deg");
             const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
             const WORLD_X_AXIS : Vector3<f32> = Vector3 {x: 1.0, y: 0.0, z: 0.0};
             let switched_base_norm = {
                 if oriented_base_norm.dot(WORLD_X_AXIS).abs() > 0.707 {
                     // horizontal
-                    println!("switch to WORLD_Y_AXIS");
+                    //println!("switch to WORLD_Y_AXIS");
                     oriented_base_norm.cross(WORLD_Y_AXIS)
                 } else {
                     // vertical
-                    println!("switch to WORLD_X_AXIS");
+                    //println!("switch to WORLD_X_AXIS");
                     oriented_base_norm.cross(WORLD_X_AXIS)
                 }
             };
             direct_normalized.cross(switched_base_norm)
         } else {
             // same direction with >= 45 deg
-            println!(">= 45 deg");
+            //println!(">= 45 deg");
             direct_normalized.cross(oriented_base_norm)
         }
     };
@@ -245,8 +245,8 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
         origin + u - v,
         origin + u + v,
         origin - u + v];
-    println!("u:{:?} v:{:?}", u, v);
-    println!("f:{:?}", f);
-    println!("make_quad end");
+    //println!("u:{:?} v:{:?}", u, v);
+    //println!("f:{:?}", f);
+    //println!("make_quad end");
     f
 }

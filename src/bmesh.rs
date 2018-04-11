@@ -340,6 +340,7 @@ impl Bmesh {
     }
 
     fn generate_from_node(&mut self, node_index: NodeIndex) {
+        println!("generate_from_node:{:?}", node_index);
         if self.graph.node_weight(node_index).unwrap().generated {
             return;
         }
@@ -423,7 +424,7 @@ impl Bmesh {
                     let wrap_ok = {
                         // test wrap
                         let mut added_loops : Vec<(Vec<Id>, Vector3<f32>)> = Vec::new();
-                        let mut test_mesh = self.mesh.clone();
+                        let mut test_mesh = Mesh::new();
                         for (face, edge_index, other_index, direct) in cuts.clone() {
                             let mut vert_ids = Vec::new();
                             for vert in face {

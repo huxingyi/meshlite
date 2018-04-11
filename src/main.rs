@@ -168,5 +168,27 @@ fn main() {
     //m2.export("test.obj").expect("save file failed");
     m1.union_mesh(&m2).export("test.obj").expect("save file failed");
     */
+
+    let mut bmesh = Bmesh::new();
+    /*
+    NOMESH:
+    let node0 = bmesh.add_node(Point3 {x:0.162995, y:-0.413932, z:-0.322483}, 0.0860678);
+    let node1 = bmesh.add_node(Point3 {x:0.076923, y:-0.214899, z:0.132066}, 0.150619);
+    let node2 = bmesh.add_node(Point3 {x:0.302851, y:0.325713, z:0.234263}, 0.174287);
+    let node3 = bmesh.add_node(Point3 {x:-0.391071, y:0.024476, z:-0.322483}, 0.0860678);
+    bmesh.add_edge(node1, node0);
+    bmesh.add_edge(node1, node2);
+    bmesh.add_edge(node1, node3);
+    */
+    let node1 = bmesh.add_node(Point3 {x:-0.384956, y:0.0752215, z:-0.166669}, 0.0943954);
+    let node0 = bmesh.add_node(Point3 {x:0.0988248, y:-0.0545711, z:0.166669}, 0.0943954);
+    let node2 = bmesh.add_node(Point3 {x:0.384956, y:0.405605, z:-0.163724}, 0.0943954);
+    let node3 = bmesh.add_node(Point3 {x:0.222719, y:-0.405605, z:-0.166669}, 0.0943954);
+    println!("node0:{:?} node1:{:?} node2:{:?} node3:{:?}", node0, node1, node2, node3);
+    bmesh.add_edge(node1, node0);
+    bmesh.add_edge(node2, node0);
+    bmesh.add_edge(node3, node0);
+    let mut mesh = bmesh.generate_mesh();
+    mesh.export("test.obj").expect("save file failed");
 }
 
