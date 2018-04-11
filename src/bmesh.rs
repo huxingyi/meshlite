@@ -62,6 +62,7 @@ pub struct Bmesh {
     wrap_error_count: i32,
     node_count: usize,
     debug_enabled: bool,
+    generate_from_node_id: usize,
 }
 
 impl Bmesh {
@@ -76,6 +77,7 @@ impl Bmesh {
             wrap_error_count: 0,
             node_count: 0,
             debug_enabled: false,
+            generate_from_node_id: 0,
         }
     }
 
@@ -172,6 +174,7 @@ impl Bmesh {
         let node = Node::new(radius, position);
         let node_id = self.graph.add_node(node).index();
         self.node_count += 1;
+        self.generate_from_node_id = node_id;
         node_id
     }
 
@@ -493,7 +496,7 @@ impl Bmesh {
     }
 
     pub fn generate_mesh(&mut self) -> &mut Mesh {
-        let root_node = NodeIndex::new(0);
+        let root_node = NodeIndex::new(self.generate_from_node_id);
         if self.node_count > 1 {
             self.resolve_base_norm();
             self.generate_from_node(root_node);
