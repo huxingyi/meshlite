@@ -20,12 +20,13 @@ build: false
 test_script:
   - cargo build --release --verbose
 
-artifacts:
-  - path: target\release\meshlite.dll
-    name: meshlite.dll
+after_test:
+  - 7z a meshlite_unstable_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite.dll
+  - 7z a meshlite_unstable_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite.dll.lib
 
-  - path: target\release\meshlite.dll.lib
-    name: meshlite.dll.lib
+artifacts:
+  - path: meshlite_%PLATFORM%.zip
+    name: meshlite_%PLATFORM%.zip
 
 deploy:
   release: meshlite-unstable
@@ -33,7 +34,7 @@ deploy:
   provider: GitHub
   auth_token:
     secure: Rhzhefjk89WN2tDht8vVKYAojGfR23LhDPKPxhQwbT7k3qswSWjmoFoDTpIHNfc0
-  artifact: meshlite.dll.lib,meshlite.dll
+  artifact: meshlite_%PLATFORM%.zip
   draft: false
   prerelease: false
   on:
