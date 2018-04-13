@@ -19,3 +19,22 @@ build: false
 
 test_script:
   - cargo build --release --verbose
+
+artifacts:
+  - path: target\release\meshlite.dll
+    name: meshlite.dll
+
+  - path: target\release\meshlite.dll.lib
+    name: meshlite.dll.lib
+
+deploy:
+  release: meshlite-unstable
+  description: 'Unstable release for test purpose only'
+  provider: GitHub
+  auth_token:
+    secure: Rhzhefjk89WN2tDht8vVKYAojGfR23LhDPKPxhQwbT7k3qswSWjmoFoDTpIHNfc0
+  artifact: meshlite.dll.lib,meshlite.dll
+  draft: false
+  prerelease: false
+  on:
+    branch: master                 # release from master branch only

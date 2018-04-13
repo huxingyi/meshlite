@@ -1,3 +1,5 @@
+![appveyor status](https://ci.appveyor.com/api/projects/status/github/huxingyi/meshlite?branch=master&svg=true)
+
 ## meshlite
 WIP
 
