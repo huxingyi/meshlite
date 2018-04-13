@@ -23,8 +23,9 @@ test_script:
   - cargo build --release --verbose
 
 after_test:
-  - 7z a meshlite_unstable_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite.dll
-  - 7z a meshlite_unstable_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite.dll.lib
+  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\include\meshlite.h
+  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite.dll
+  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite.dll.lib
 
 artifacts:
   - path: '*.zip'
