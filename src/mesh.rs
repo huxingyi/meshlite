@@ -1283,6 +1283,24 @@ impl Mesh {
         }
         broken_face_set
     }
+
+    pub fn mirror_in_x(&self, center_x: f32) -> Self {
+        let mut new_mesh = Mesh::new();
+        new_mesh.add_mesh(self);
+        for vert in new_mesh.vertices.iter_mut() {
+            vert.position.x = center_x - vert.position.x;
+        }
+        new_mesh.flip_mesh()
+    }
+
+    pub fn mirror_in_z(&self, center_z: f32) -> Self {
+        let mut new_mesh = Mesh::new();
+        new_mesh.add_mesh(self);
+        for vert in new_mesh.vertices.iter_mut() {
+            vert.position.z = center_z - vert.position.z;
+        }
+        new_mesh.flip_mesh()
+    }
 }
 
 impl Add for Mesh {

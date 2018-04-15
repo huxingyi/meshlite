@@ -706,3 +706,29 @@ pub extern "C" fn meshlite_bmesh_error_count(context: *mut RustContext, bmesh_id
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
     bmesh.error_count() as c_int
 }
+
+#[no_mangle]
+pub extern "C" fn meshlite_mirror_in_x(context: *mut RustContext, mesh_id: c_int, center_x: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().mirror_in_x(center_x);
+    ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
+    new_mesh_id
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_mirror_in_z(context: *mut RustContext, mesh_id: c_int, center_z: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().mirror_in_z(center_z);
+    ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
+    new_mesh_id
+}
