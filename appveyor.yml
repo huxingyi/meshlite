@@ -33,7 +33,7 @@ artifacts:
 
 deploy:
   release: meshlite-unstable
-  description: 'Unstable release for test purpose only'
+  description: 'Unstable release for test purpose only. The source code is attached when this release first created, and it is not get updated while the binary been replaced.'
   force_update: true
   provider: GitHub
   auth_token:
