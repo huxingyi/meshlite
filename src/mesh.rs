@@ -1301,6 +1301,30 @@ impl Mesh {
         }
         new_mesh.flip_mesh()
     }
+
+    pub fn fix_hole(&self) -> Self {
+        let mut new_mesh = Mesh::new();
+        let mut border_map : HashMap<Id, Id> = HashMap::new();
+        new_mesh.add_mesh(self);
+        {
+            for face_id in FaceIterator::new(&new_mesh) {
+                for halfedge_id in FaceHalfedgeIterator::new(&new_mesh, new_mesh.face_first_halfedge_id(face_id).unwrap()) {
+                    if new_mesh.halfedge_opposite_id(halfedge_id).is_none() {
+                        let next_halfedge_id = new_mesh.halfedge_next_id(halfedge_id);
+                        if next_halfedge_id.is_some() {
+                            let vertex_id = new_mesh.halfedge_start_vertex_id(halfedge_id);
+                            let next_vertex_id = new_mesh.halfedge_start_vertex_id(next_halfedge_id.unwrap());
+                            if vertex_id.is_some() && next_vertex_id.is_some() {
+                                border_map.insert(next_vertex_id.unwrap(), vertex_id.unwrap());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        while new_mesh.add_linked_vertices(&mut border_map) > 0 {};
+        new_mesh
+    }
 }
 
 impl Add for Mesh {
