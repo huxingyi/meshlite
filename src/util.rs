@@ -177,25 +177,57 @@ pub fn is_point_on_segment(point: Point3<f32>, seg_begin: Point3<f32>, seg_end: 
     dist <= 0.00001
 }
 
+pub fn is_valid_norm(norm: Vector3<f32>) -> bool {
+    !norm.x.is_nan() && !norm.y.is_nan() && !norm.z.is_nan()
+}
+
 pub fn pick_base_plane_norm(directs: Vec<Vector3<f32>>, positions: Vec<Point3<f32>>, weights: Vec<f32>) -> Option<Vector3<f32>> {
     if (directs.len() <= 1) {
         None
     } else if (directs.len() <= 2) {
-        // <15 degrees || > 165 degrees
-        if directs[0].dot(directs[1]).abs() > 0.966 {
-            return None;
+        // >=15 degrees && <= 165 degrees
+        if directs[0].dot(directs[1]).abs() < 0.966 {
+            return Some(directs[0].cross(directs[1]))
         }
-        let direct = directs[0].cross(directs[1]);
-        Some(direct)
+        None
     } else if (directs.len() <= 3) {
-        Some(norm(positions[0], positions[1], positions[2]))
+        let norm = norm(positions[0], positions[1], positions[2]);
+        if is_valid_norm(norm) {
+            return Some(norm);
+        }
+        // >=15 degrees && <= 165 degrees
+        if directs[0].dot(directs[1]).abs() < 0.966 {
+            return Some(directs[0].cross(directs[1]))
+        } else if directs[1].dot(directs[2]).abs() < 0.966 {
+            return Some(directs[1].cross(directs[2]))
+        } else if directs[2].dot(directs[0]).abs() < 0.966 {
+            return Some(directs[2].cross(directs[0]))
+        } else {
+            None
+        }
     } else {
         let mut weighted_indices : Vec<(usize, usize)> = Vec::new();
         for i in 0..weights.len() {
             weighted_indices.push((i, (weights[i] * 100.0) as usize));
         }
         weighted_indices.sort_by(|a, b| b.1.cmp(&a.1));
-        Some(norm(positions[weighted_indices[0].0], positions[weighted_indices[1].0], positions[weighted_indices[2].0]))
+        let i0 = weighted_indices[0].0;
+        let i1 = weighted_indices[1].0;
+        let i2 = weighted_indices[2].0;
+        let norm = norm(positions[i0], positions[i1], positions[i2]);
+        if is_valid_norm(norm) {
+            return Some(norm);
+        }
+        // >=15 degrees && <= 165 degrees
+        if directs[i0].dot(directs[i1]).abs() < 0.966 {
+            return Some(directs[i0].cross(directs[i1]))
+        } else if directs[i1].dot(directs[i2]).abs() < 0.966 {
+            return Some(directs[i1].cross(directs[i2]))
+        } else if directs[i2].dot(directs[i0]).abs() < 0.966 {
+            return Some(directs[i2].cross(directs[i0]))
+        } else {
+            None
+        }
     }
 }
 

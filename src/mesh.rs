@@ -382,12 +382,14 @@ impl Mesh {
     }
 
     pub fn add_vertex(&mut self, position: Point3<f32>) -> usize {
+        /*
         assert!(!position.x.is_nan());
         assert!(!position.y.is_nan());
         assert!(!position.z.is_nan());
         assert!(!position.x.is_infinite());
         assert!(!position.y.is_infinite());
         assert!(!position.z.is_infinite());
+        */
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
