@@ -14,6 +14,8 @@ use util::*;
 use iterator::FaceIterator;
 use iterator::FaceHalfedgeIterator;
 use debug::Debug;
+use subdivide::CatmullClarkSubdivider;
+use subdivide::Subdivide;
 
 struct Node {
     radius: f32,
@@ -63,6 +65,7 @@ pub struct Bmesh {
     node_count: usize,
     debug_enabled: bool,
     generate_from_node_id: usize,
+    cut_subdiv_count: usize,
 }
 
 impl Bmesh {
@@ -78,7 +81,12 @@ impl Bmesh {
             node_count: 0,
             debug_enabled: false,
             generate_from_node_id: 0,
+            cut_subdiv_count: 0,
         }
+    }
+
+    pub fn set_cut_subdiv_count(&mut self, count: usize) {
+        self.cut_subdiv_count = count;
     }
 
     pub fn enable_debug(&mut self, enable: bool) {
@@ -193,7 +201,31 @@ impl Bmesh {
     }
 
     fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_norm: Vector3<f32>) -> Vec<Point3<f32>> {
-        make_quad(position, direct, radius, base_norm)
+        let mut cut : Vec<Point3<f32>> = make_quad(position, direct, radius, base_norm);
+        let origin = position + direct * radius;
+        for _ in 0..self.cut_subdiv_count {
+            let mut middle_cut : Vec<Point3<f32>> = Vec::new();
+            let mut final_cut : Vec<Point3<f32>> = Vec::new();
+            let length = (cut[0] - origin).magnitude() * 0.8;
+            for i in 0..cut.len() {
+                let a = cut[i] - origin;
+                let b = cut[(i + 1) % cut.len()] - origin;
+                let c = a + b;
+                let new_point = origin + c.normalize_to(length);
+                middle_cut.push(new_point);
+            }
+            let length = (middle_cut[0] - origin).magnitude();
+            for i in 0..middle_cut.len() {
+                let a = middle_cut[i] - origin;
+                let b = middle_cut[(i + 1) % middle_cut.len()] - origin;
+                let c = a + b;
+                let new_point = origin + c.normalize_to(length);
+                final_cut.push(middle_cut[i]);
+                final_cut.push(new_point);
+            }
+            cut = final_cut;
+        }
+        cut
     }
 
     fn resolve_triangle_ring_from_node(&mut self, node_index: NodeIndex) {
@@ -517,6 +549,10 @@ impl Bmesh {
             self.mesh.extrude_face(face_id, normal, node_radius).translate(node_position.x, 
                 node_position.y, 
                 node_position.z - node_radius * 0.5);
+            if self.cut_subdiv_count > 0 {
+                let subdived_mesh = self.mesh.subdivide();
+                self.mesh = subdived_mesh;
+            }
         }
         &mut self.mesh
     }
