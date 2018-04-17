@@ -66,6 +66,8 @@ pub struct Bmesh {
     debug_enabled: bool,
     generate_from_node_id: usize,
     cut_subdiv_count: usize,
+    thickness: f32,
+    vertex_node_map: HashMap<Id, NodeIndex>,
 }
 
 impl Bmesh {
@@ -82,11 +84,17 @@ impl Bmesh {
             debug_enabled: false,
             generate_from_node_id: 0,
             cut_subdiv_count: 0,
+            thickness: 1.0,
+            vertex_node_map: HashMap::new(),
         }
     }
 
     pub fn set_cut_subdiv_count(&mut self, count: usize) {
         self.cut_subdiv_count = count;
+    }
+
+    pub fn set_thickness(&mut self, thickness: f32) {
+        self.thickness = thickness;
     }
 
     pub fn enable_debug(&mut self, enable: bool) {
@@ -507,6 +515,9 @@ impl Bmesh {
             }
         }
         for (edge_index, cut) in new_cuts {
+            for &vertex_id in cut.0.iter() {
+                self.vertex_node_map.insert(vertex_id, node_index);
+            }
             let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
             edge.cuts.push(cut);
         }
@@ -531,6 +542,27 @@ impl Bmesh {
         self.wrap_error_count as usize
     }
 
+    fn resolve_thickness(&mut self) {
+        for vert in self.mesh.vertices.iter_mut() {
+            let node_index = self.vertex_node_map[&vert.id];
+            let node_base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
+            let node_position = self.graph.node_weight(node_index).unwrap().position;
+            let vert_ray = vert.position - node_position;
+            let revised_norm = if vert_ray.dot(node_base_norm) < 0.0 {
+                -node_base_norm
+            } else {
+                node_base_norm
+            };
+            let proj = vert_ray.project_on(revised_norm);
+            let scaled_proj = proj * self.thickness;
+            let scaled_vert_ray = Vector3 {x:vert.position.x, y:vert.position.y, z:vert.position.z} + 
+                (scaled_proj - proj);
+            vert.position.x = scaled_vert_ray.x;
+            vert.position.y = scaled_vert_ray.y;
+            vert.position.z = scaled_vert_ray.z;
+        }
+    }
+
     pub fn generate_mesh(&mut self) -> &mut Mesh {
         let root_node = NodeIndex::new(self.generate_from_node_id);
         if self.node_count > 1 {
@@ -539,6 +571,9 @@ impl Bmesh {
             if 0 == self.wrap_error_count {
                 self.stitch_by_edges();
                 self.resolve_ring_from_node(root_node);
+            }
+            if (self.thickness - 1.0).abs() > SMALL_NUM {
+                self.resolve_thickness();
             }
             self.output_debug_info_if_enabled();
         } else {

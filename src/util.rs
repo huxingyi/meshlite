@@ -187,21 +187,21 @@ pub fn pick_base_plane_norm(directs: Vec<Vector3<f32>>, positions: Vec<Point3<f3
     } else if (directs.len() <= 2) {
         // >=15 degrees && <= 165 degrees
         if directs[0].dot(directs[1]).abs() < 0.966 {
-            return Some(directs[0].cross(directs[1]))
+            return Some(directs[0].cross(directs[1]).normalize())
         }
         None
     } else if (directs.len() <= 3) {
         let norm = norm(positions[0], positions[1], positions[2]);
         if is_valid_norm(norm) {
-            return Some(norm);
+            return Some(norm.normalize());
         }
         // >=15 degrees && <= 165 degrees
         if directs[0].dot(directs[1]).abs() < 0.966 {
-            return Some(directs[0].cross(directs[1]))
+            return Some(directs[0].cross(directs[1]).normalize())
         } else if directs[1].dot(directs[2]).abs() < 0.966 {
-            return Some(directs[1].cross(directs[2]))
+            return Some(directs[1].cross(directs[2]).normalize())
         } else if directs[2].dot(directs[0]).abs() < 0.966 {
-            return Some(directs[2].cross(directs[0]))
+            return Some(directs[2].cross(directs[0]).normalize())
         } else {
             None
         }
@@ -216,15 +216,15 @@ pub fn pick_base_plane_norm(directs: Vec<Vector3<f32>>, positions: Vec<Point3<f3
         let i2 = weighted_indices[2].0;
         let norm = norm(positions[i0], positions[i1], positions[i2]);
         if is_valid_norm(norm) {
-            return Some(norm);
+            return Some(norm.normalize());
         }
         // >=15 degrees && <= 165 degrees
         if directs[i0].dot(directs[i1]).abs() < 0.966 {
-            return Some(directs[i0].cross(directs[i1]))
+            return Some(directs[i0].cross(directs[i1]).normalize())
         } else if directs[i1].dot(directs[i2]).abs() < 0.966 {
-            return Some(directs[i1].cross(directs[i2]))
+            return Some(directs[i1].cross(directs[i2]).normalize())
         } else if directs[i2].dot(directs[i0]).abs() < 0.966 {
-            return Some(directs[i2].cross(directs[i0]))
+            return Some(directs[i2].cross(directs[i0]).normalize())
         } else {
             None
         }
