@@ -161,8 +161,8 @@ impl Bmesh {
         }
         let base_norm = self.calculate_node_base_norm(node_index);
         if base_norm.is_none() {
-            const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
-            self.resolve_base_norm_for_leaves_from_node(node_index, WORLD_Y_AXIS);
+            const WORLD_Z_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 0.0, z: 1.0};
+            self.resolve_base_norm_for_leaves_from_node(node_index, WORLD_Z_AXIS);
             return;
         }
         self.resolve_base_norm_for_leaves_from_node(node_index, base_norm.unwrap());
@@ -550,7 +550,11 @@ impl Bmesh {
 
     fn resolve_deform(&mut self) {
         for vert in self.mesh.vertices.iter_mut() {
-            let node_index = self.vertex_node_map[&vert.id];
+            let node_index = if self.vertex_node_map.is_empty() {
+                NodeIndex::new(self.generate_from_node_id)
+            } else {
+                self.vertex_node_map[&vert.id]
+            };
             let node_base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
             let node_position = self.graph.node_weight(node_index).unwrap().position;
             let vert_ray = vert.position - node_position;
@@ -566,7 +570,7 @@ impl Bmesh {
                 sum_z += thickness_deformed_position.z;
                 num += 1;
             }
-            if (self.deform_thickness - 1.0).abs() > SMALL_NUM {
+            if (self.deform_width - 1.0).abs() > SMALL_NUM {
                 let width_deformed_position = calculate_deform_position(vert.position,
                     vert_ray, world_perp(node_base_norm), self.deform_width);
                 sum_x += width_deformed_position.x;
@@ -592,7 +596,7 @@ impl Bmesh {
                 self.resolve_ring_from_node(root_node);
             }
             if (self.deform_thickness - 1.0).abs() > SMALL_NUM ||
-                    (self.deform_thickness - 1.0).abs() > SMALL_NUM {
+                    (self.deform_width - 1.0).abs() > SMALL_NUM {
                 self.resolve_deform();
             }
             self.output_debug_info_if_enabled();
@@ -608,6 +612,10 @@ impl Bmesh {
                 let subdived_mesh = self.mesh.subdivide();
                 self.mesh = subdived_mesh;
             }
+            if (self.deform_thickness - 1.0).abs() > SMALL_NUM ||
+                    (self.deform_width - 1.0).abs() > SMALL_NUM {
+                self.resolve_deform();
+            }
         }
         &mut self.mesh
     }
@@ -618,7 +626,7 @@ impl Node {
         Node {
             radius: radius,
             position: position,
-            base_norm: Vector3::zero(),
+            base_norm: Vector3 {x:0.0, y:0.0, z:1.0},
             generated: false,
             triangle_ring_resolved: false,
             quad_ring_resolved: false,
