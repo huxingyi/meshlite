@@ -231,6 +231,33 @@ pub fn pick_base_plane_norm(directs: Vec<Vector3<f32>>, positions: Vec<Point3<f3
     }
 }
 
+pub fn world_perp(direct: Vector3<f32>) -> Vector3<f32> {
+    const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
+    const WORLD_X_AXIS : Vector3<f32> = Vector3 {x: 1.0, y: 0.0, z: 0.0};
+    if direct.dot(WORLD_X_AXIS).abs() > 0.707 {
+        // horizontal
+        //println!("switch to WORLD_Y_AXIS");
+        direct.cross(WORLD_Y_AXIS)
+    } else {
+        // vertical
+        //println!("switch to WORLD_X_AXIS");
+        direct.cross(WORLD_X_AXIS)
+    }
+}
+
+pub fn calculate_deform_position(vert_position: Point3<f32>, vert_ray: Vector3<f32>, deform_norm: Vector3<f32>, deform_factor: f32) -> Point3<f32> {
+    let revised_norm = if vert_ray.dot(deform_norm) < 0.0 {
+        -deform_norm
+    } else {
+        deform_norm
+    };
+    let proj = vert_ray.project_on(revised_norm);
+    let scaled_proj = proj * deform_factor;
+    let scaled_vert_ray = Vector3 {x:vert_position.x, y:vert_position.y, z:vert_position.z} + 
+            (scaled_proj - proj);
+    Point3 {x: scaled_vert_ray.x, y: scaled_vert_ray.y, z: scaled_vert_ray.z}
+}
+
 pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_norm: Vector3<f32>) -> Vec<Point3<f32>> {
     let direct_normalized = direct.normalize();
     let base_norm_normalized = base_norm.normalize();
@@ -249,19 +276,7 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
         if direct_normalized.dot(oriented_base_norm).abs() > 0.707 {
             // same direction with < 45 deg
             //println!("< 45 deg");
-            const WORLD_Y_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 1.0, z: 0.0};
-            const WORLD_X_AXIS : Vector3<f32> = Vector3 {x: 1.0, y: 0.0, z: 0.0};
-            let switched_base_norm = {
-                if oriented_base_norm.dot(WORLD_X_AXIS).abs() > 0.707 {
-                    // horizontal
-                    //println!("switch to WORLD_Y_AXIS");
-                    oriented_base_norm.cross(WORLD_Y_AXIS)
-                } else {
-                    // vertical
-                    //println!("switch to WORLD_X_AXIS");
-                    oriented_base_norm.cross(WORLD_X_AXIS)
-                }
-            };
+            let switched_base_norm = world_perp(oriented_base_norm);
             direct_normalized.cross(switched_base_norm)
         } else {
             // same direction with >= 45 deg

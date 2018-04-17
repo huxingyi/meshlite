@@ -709,14 +709,26 @@ pub extern "C" fn meshlite_bmesh_set_cut_subdiv_count(context: *mut RustContext,
 }
 
 #[no_mangle]
-pub extern "C" fn meshlite_bmesh_set_thickness(context: *mut RustContext, bmesh_id: c_int, thickness: c_float) -> c_int {
+pub extern "C" fn meshlite_bmesh_set_deform_thickness(context: *mut RustContext, bmesh_id: c_int, thickness: c_float) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
-    bmesh.set_thickness(thickness);
+    bmesh.set_deform_thickness(thickness);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_set_deform_width(context: *mut RustContext, bmesh_id: c_int, width: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.set_deform_width(width);
     0
 }
 

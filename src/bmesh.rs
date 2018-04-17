@@ -66,7 +66,8 @@ pub struct Bmesh {
     debug_enabled: bool,
     generate_from_node_id: usize,
     cut_subdiv_count: usize,
-    thickness: f32,
+    deform_thickness: f32,
+    deform_width: f32,
     vertex_node_map: HashMap<Id, NodeIndex>,
 }
 
@@ -84,7 +85,8 @@ impl Bmesh {
             debug_enabled: false,
             generate_from_node_id: 0,
             cut_subdiv_count: 0,
-            thickness: 1.0,
+            deform_thickness: 1.0,
+            deform_width: 1.0,
             vertex_node_map: HashMap::new(),
         }
     }
@@ -93,8 +95,12 @@ impl Bmesh {
         self.cut_subdiv_count = count;
     }
 
-    pub fn set_thickness(&mut self, thickness: f32) {
-        self.thickness = thickness;
+    pub fn set_deform_thickness(&mut self, thickness: f32) {
+        self.deform_thickness = thickness;
+    }
+
+    pub fn set_deform_width(&mut self, width: f32) {
+        self.deform_width = width;
     }
 
     pub fn enable_debug(&mut self, enable: bool) {
@@ -542,24 +548,37 @@ impl Bmesh {
         self.wrap_error_count as usize
     }
 
-    fn resolve_thickness(&mut self) {
+    fn resolve_deform(&mut self) {
         for vert in self.mesh.vertices.iter_mut() {
             let node_index = self.vertex_node_map[&vert.id];
             let node_base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
             let node_position = self.graph.node_weight(node_index).unwrap().position;
             let vert_ray = vert.position - node_position;
-            let revised_norm = if vert_ray.dot(node_base_norm) < 0.0 {
-                -node_base_norm
-            } else {
-                node_base_norm
-            };
-            let proj = vert_ray.project_on(revised_norm);
-            let scaled_proj = proj * self.thickness;
-            let scaled_vert_ray = Vector3 {x:vert.position.x, y:vert.position.y, z:vert.position.z} + 
-                (scaled_proj - proj);
-            vert.position.x = scaled_vert_ray.x;
-            vert.position.y = scaled_vert_ray.y;
-            vert.position.z = scaled_vert_ray.z;
+            let mut sum_x = 0.0;
+            let mut sum_y = 0.0;
+            let mut sum_z = 0.0;
+            let mut num = 0;
+            if (self.deform_thickness - 1.0).abs() > SMALL_NUM {
+                let thickness_deformed_position = calculate_deform_position(vert.position,
+                    vert_ray, node_base_norm, self.deform_thickness);
+                sum_x += thickness_deformed_position.x;
+                sum_y += thickness_deformed_position.y;
+                sum_z += thickness_deformed_position.z;
+                num += 1;
+            }
+            if (self.deform_thickness - 1.0).abs() > SMALL_NUM {
+                let width_deformed_position = calculate_deform_position(vert.position,
+                    vert_ray, world_perp(node_base_norm), self.deform_width);
+                sum_x += width_deformed_position.x;
+                sum_y += width_deformed_position.y;
+                sum_z += width_deformed_position.z;
+                num += 1;
+            }
+            if num > 0 {
+                vert.position.x = sum_x / num as f32;
+                vert.position.y = sum_y / num as f32;
+                vert.position.z = sum_z / num as f32;
+            }
         }
     }
 
@@ -572,8 +591,9 @@ impl Bmesh {
                 self.stitch_by_edges();
                 self.resolve_ring_from_node(root_node);
             }
-            if (self.thickness - 1.0).abs() > SMALL_NUM {
-                self.resolve_thickness();
+            if (self.deform_thickness - 1.0).abs() > SMALL_NUM ||
+                    (self.deform_thickness - 1.0).abs() > SMALL_NUM {
+                self.resolve_deform();
             }
             self.output_debug_info_if_enabled();
         } else {
