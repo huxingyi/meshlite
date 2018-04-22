@@ -28,6 +28,7 @@ pub struct Vertex {
     pub prev: Id,
     pub next: Id,
     pub alive: bool,
+    pub source: i32,
 }
 
 #[derive(Debug)]
@@ -382,14 +383,6 @@ impl Mesh {
     }
 
     pub fn add_vertex(&mut self, position: Point3<f32>) -> usize {
-        /*
-        assert!(!position.x.is_nan());
-        assert!(!position.y.is_nan());
-        assert!(!position.z.is_nan());
-        assert!(!position.x.is_infinite());
-        assert!(!position.y.is_infinite());
-        assert!(!position.z.is_infinite());
-        */
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
@@ -398,6 +391,7 @@ impl Mesh {
             next: 0,
             position : position,
             alive: true,
+            source: -1,
         });
         self.vertex_count += 1;
         new_id
@@ -642,7 +636,7 @@ impl Mesh {
         for face_id in FaceIterator::new(&self) {
             let face = self.face(face_id).unwrap();
             let mut key_set : HashSet<Point3Key> = HashSet::new();
-            let mut positions : Vec<Point3<f32>> = Vec::new();
+            let mut positions : Vec<(Point3<f32>, i32)> = Vec::new();
             for halfedge_id in FaceHalfedgeIterator::new(&self, face.halfedge) {
                 let vertex = self.halfedge_start_vertex(halfedge_id).unwrap();
                 let key = Point3Key::new(vertex.position);
@@ -650,16 +644,18 @@ impl Mesh {
                     continue;
                 }
                 key_set.insert(key);
-                positions.push(vertex.position);
+                positions.push((vertex.position, vertex.source));
             }
             if positions.len() < 3 {
                 continue;
             }
             let mut added_vertices : Vec<Id> = Vec::new();
-            for pos in positions.iter() {
-                let key = Point3Key::new(*pos);
+            for &(pos, source) in positions.iter() {
+                let key = Point3Key::new(pos);
                 let new_vert_id = *vertices_set.entry(key).or_insert_with(|| {
-                    new_mesh.add_vertex(*pos)
+                    let new_added_vert_id = new_mesh.add_vertex(pos);
+                    new_mesh.vertex_mut(new_added_vert_id).unwrap().source = source;
+                    new_added_vert_id
                 });
                 added_vertices.push(new_vert_id);
             }
@@ -680,6 +676,7 @@ impl Mesh {
                     added_halfedges.push((self.add_halfedge(), new_vertex_id));
                 } else {
                     let new_vertex_id = self.add_vertex(vertex.position);
+                    self.vertex_mut(new_vertex_id).unwrap().source = vertex.source;
                     vertices_set.insert(key, new_vertex_id);
                     added_halfedges.push((self.add_halfedge(), new_vertex_id));
                 }
@@ -696,7 +693,9 @@ impl Mesh {
             for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
                 let old_vert = self.halfedge_start_vertex(halfedge_id).unwrap();
                 let new_vert_id = new_vert_map.entry(old_vert.id).or_insert_with(|| {
-                    new_mesh.add_vertex(old_vert.position)
+                    let new_added_vert_id = new_mesh.add_vertex(old_vert.position);
+                    new_mesh.vertex_mut(new_added_vert_id).unwrap().source = old_vert.source;
+                    new_added_vert_id
                 });
                 verts.push(*new_vert_id);
             }
@@ -958,7 +957,9 @@ impl Mesh {
                     continue;
                 }
                 let new_vert_id = *new_vert_map.entry(vert_id).or_insert_with(|| {
-                    to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position)
+                    let new_added_vertex_id = to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position);
+                    to_mesh.vertex_mut(new_added_vertex_id).unwrap().source = from_mesh.vertex(vert_id).unwrap().source;
+                    new_added_vertex_id
                 });
                 added_vertices.push(new_vert_id);
             }
@@ -1014,7 +1015,9 @@ impl Mesh {
                 for halfedge_id in FaceHalfedgeIterator::new(from_mesh, from_mesh.face_first_halfedge_id(face_id).unwrap()) {
                     let vert_id = from_mesh.halfedge_start_vertex_id(halfedge_id).unwrap();
                     let new_vert_id = *new_vert_map.entry(vert_id).or_insert_with(|| {
-                        to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position)
+                        let new_added_vert_id = to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position);
+                        to_mesh.vertex_mut(new_added_vert_id).unwrap().source = from_mesh.vertex(vert_id).unwrap().source;
+                        new_added_vert_id
                     });
                     added_vertices.push(new_vert_id);
                 }
@@ -1053,7 +1056,9 @@ impl Mesh {
                             used_halfedges.insert(loop_halfedge_id);
                             let vert_id = from_mesh.halfedge_start_vertex_id(loop_halfedge_id).unwrap();
                             let new_vert_id = *new_vert_map.entry(vert_id).or_insert_with(|| {
-                                to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position)
+                                let new_added_vert_id = to_mesh.add_vertex(from_mesh.vertex(vert_id).unwrap().position);
+                                to_mesh.vertex_mut(new_added_vert_id).unwrap().source = from_mesh.vertex(vert_id).unwrap().source;
+                                new_added_vert_id
                             });
                             added_vertices.push(new_vert_id);
                         }
@@ -1139,7 +1144,9 @@ impl Mesh {
             for old_vert_id in verts.iter() {
                 if !ignore_vert_ids.contains(old_vert_id) {
                     let new_vert_id = new_vert_map.entry(*old_vert_id).or_insert_with(|| {
-                        to_mesh.add_vertex(from_mesh.vertex(*old_vert_id).unwrap().position)
+                        let new_added_vert_id = to_mesh.add_vertex(from_mesh.vertex(*old_vert_id).unwrap().position);
+                        to_mesh.vertex_mut(new_added_vert_id).unwrap().source = from_mesh.vertex(*old_vert_id).unwrap().source;
+                        new_added_vert_id
                     });
                     added_vertices.push(*new_vert_id);
                 }

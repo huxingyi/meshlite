@@ -20,6 +20,7 @@ int meshlite_intersect(void *context, int first_mesh_id, int second_mesh_id);
 int meshlite_scale(void *context, int mesh_id, float value);
 int meshlite_get_vertex_count(void *context, int mesh_id);
 int meshlite_get_vertex_position_array(void *context, int mesh_id, float *buffer, int max_buffer_len);
+int meshlite_get_vertex_source_array(void *context, int mesh_id, int *buffer, int max_buffer_len);
 int meshlite_get_face_count(void *context, int mesh_id);
 int meshlite_get_face_index_array(void *context, int mesh_id, int *buffer, int max_buffer_len);
 int meshlite_get_triangle_index_array(void *context, int mesh_id, int *buffer, int max_buffer_len);

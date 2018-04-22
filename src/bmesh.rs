@@ -27,6 +27,7 @@ struct Node {
     base_norm_resolved: bool,
     cut_subdiv_count: Option<usize>,
     round_way: Option<i32>,
+    generate_from_node_id: Option<usize>,
 }
 
 struct Edge {
@@ -444,7 +445,9 @@ impl Bmesh {
                 for _ in 0..self.round_steps {
                     step_radius *= 0.5;
                     step_from = step_from + step_direct * step_radius;
-                    wait_connect_node_ids.push(self.add_node(step_from, step_radius));
+                    let new_node_id = self.add_node(step_from, step_radius);
+                    self.graph.node_weight_mut(NodeIndex::new(new_node_id)).unwrap().generate_from_node_id = Some(end_start.0.index());
+                    wait_connect_node_ids.push(new_node_id);
                 }
                 for i in 1..wait_connect_node_ids.len() {
                     let from_node_id = wait_connect_node_ids[i - 1];
@@ -464,6 +467,14 @@ impl Bmesh {
             return;
         }
         self.graph.node_weight_mut(node_index).unwrap().generated = true;
+        let user_node_id = {
+            let from_id = self.graph.node_weight(node_index).unwrap().generate_from_node_id;
+            if from_id.is_none() {
+                node_index.index()
+            } else {
+                from_id.unwrap()
+            }
+        };
         let node_base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
@@ -601,6 +612,7 @@ impl Bmesh {
         for (edge_index, cut) in new_cuts {
             for &vertex_id in cut.0.iter() {
                 self.vertex_node_map.insert(vertex_id, node_index);
+                self.mesh.vertex_mut(vertex_id).unwrap().source = user_node_id as i32;
             }
             let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
             edge.cuts.push(cut);
@@ -711,7 +723,8 @@ impl Node {
             quad_ring_resolved: false,
             base_norm_resolved: false,
             cut_subdiv_count: None,
-            round_way: None
+            round_way: None,
+            generate_from_node_id: None
         }
     }
 }

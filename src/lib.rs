@@ -316,6 +316,29 @@ pub extern "C" fn meshlite_get_vertex_position_array(context: *mut RustContext, 
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_get_vertex_source_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap();
+    let count : isize = cmp::min((mesh.vertices.len()) as usize, max_buffer_len as usize) as isize;
+    let mut i : isize = 0;
+    for vert_idx in 0..mesh.vertices.len() {
+        let source = mesh.vertices[vert_idx].source;
+        if i + 1 > count {
+            break;
+        }
+        unsafe {
+            *buffer.offset(i + 0) = source;
+        }
+        i += 1;
+    }
+    i as c_int
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_get_halfedge_index_array(context: *mut RustContext, mesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
