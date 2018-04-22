@@ -591,6 +591,30 @@ pub extern "C" fn meshlite_bmesh_add_node(context: *mut RustContext, bmesh_id: c
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_bmesh_set_node_cut_subdiv_count(context: *mut RustContext, bmesh_id: c_int, node_id: c_int, subdiv_count: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.set_node_cut_subdiv_count(node_id as usize, subdiv_count as usize);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_set_node_round_way(context: *mut RustContext, bmesh_id: c_int, node_id: c_int, round_way: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.set_node_round_way(node_id as usize, round_way);
+    0
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_bmesh_add_edge(context: *mut RustContext, bmesh_id: c_int, first_node_id: c_int, second_node_id: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
@@ -705,6 +729,18 @@ pub extern "C" fn meshlite_bmesh_set_cut_subdiv_count(context: *mut RustContext,
     assert_eq!(ctx.magic, MAGIC_NUM);
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
     bmesh.set_cut_subdiv_count(subdiv_count as usize);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_set_round_way(context: *mut RustContext, bmesh_id: c_int, round_way: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.set_round_way(round_way);
     0
 }
 

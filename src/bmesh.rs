@@ -25,6 +25,8 @@ struct Node {
     triangle_ring_resolved: bool,
     quad_ring_resolved: bool,
     base_norm_resolved: bool,
+    cut_subdiv_count: Option<usize>,
+    round_way: Option<i32>,
 }
 
 struct Edge {
@@ -66,9 +68,11 @@ pub struct Bmesh {
     debug_enabled: bool,
     generate_from_node_id: usize,
     cut_subdiv_count: usize,
+    round_way: i32,
     deform_thickness: f32,
     deform_width: f32,
     vertex_node_map: HashMap<Id, NodeIndex>,
+    round_steps: usize,
 }
 
 impl Bmesh {
@@ -85,14 +89,20 @@ impl Bmesh {
             debug_enabled: false,
             generate_from_node_id: 0,
             cut_subdiv_count: 0,
+            round_way: 0,
             deform_thickness: 1.0,
             deform_width: 1.0,
             vertex_node_map: HashMap::new(),
+            round_steps: 1,
         }
     }
 
     pub fn set_cut_subdiv_count(&mut self, count: usize) {
         self.cut_subdiv_count = count;
+    }
+
+    pub fn set_round_way(&mut self, round_way: i32) {
+        self.round_way = round_way;
     }
 
     pub fn set_deform_thickness(&mut self, thickness: f32) {
@@ -109,6 +119,14 @@ impl Bmesh {
 
     pub fn get_node_base_norm(&self, node_id: usize) -> Vector3<f32> {
         self.graph.node_weight(NodeIndex::new(node_id)).unwrap().base_norm
+    }
+
+    pub fn set_node_cut_subdiv_count(&mut self, node_id: usize, subdiv_count: usize) {
+        self.graph.node_weight_mut(NodeIndex::new(node_id)).unwrap().cut_subdiv_count = Some(subdiv_count);
+    }
+
+    pub fn set_node_round_way(&mut self, node_id: usize, round_way: i32) {
+        self.graph.node_weight_mut(NodeIndex::new(node_id)).unwrap().round_way = Some(round_way);
     }
 
     fn resolve_base_norm_for_leaves_from_node(&mut self, node_index: NodeIndex, base_norm: Vector3<f32>) {
@@ -214,10 +232,10 @@ impl Bmesh {
         direct.normalize()
     }
 
-    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_norm: Vector3<f32>) -> Vec<Point3<f32>> {
+    fn make_cut(&self, position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_norm: Vector3<f32>, subdiv_count: usize) -> Vec<Point3<f32>> {
         let mut cut : Vec<Point3<f32>> = make_quad(position, direct, radius, base_norm);
         let origin = position + direct * radius;
-        for _ in 0..self.cut_subdiv_count {
+        for _ in 0..subdiv_count {
             let mut middle_cut : Vec<Point3<f32>> = Vec::new();
             let mut final_cut : Vec<Point3<f32>> = Vec::new();
             let length = (cut[0] - origin).magnitude() * 0.8;
@@ -388,6 +406,58 @@ impl Bmesh {
         }
     }
 
+    pub fn resolve_round(&mut self) {
+        let mut new_end_starts : Vec<(NodeIndex, Vector3<f32>)> = Vec::new();
+        for (&k, &v) in self.neighbor_count_map.iter() {
+            if 1 == v {
+                let node_index = NodeIndex::new(k);
+                let neighbors = self.graph.neighbors_undirected(node_index);
+                for other_index in neighbors {
+                    let direct = self.direct_of_nodes(node_index, other_index);
+                    new_end_starts.push((node_index, -direct));
+                }
+            }
+        }
+        for end_start in new_end_starts {
+            let node_origin = self.graph.node_weight(end_start.0).unwrap().position;
+            let node_radius = self.graph.node_weight(end_start.0).unwrap().radius;
+            let node_round_way = self.graph.node_weight(end_start.0).unwrap().round_way;
+            let node_cut_subdiv_count = self.graph.node_weight(end_start.0).unwrap().cut_subdiv_count;
+            let round_way = {
+                if node_round_way.is_none() {
+                    self.round_way
+                } else {
+                    node_round_way.unwrap()
+                }
+            };
+            if 0 != round_way {
+                let mut step_radius = node_radius;
+                let mut step_from = node_origin;
+                let mut wait_connect_node_ids : Vec<Id> = Vec::new();
+                let step_direct = if round_way > 0 {
+                    end_start.1
+                } else {
+                    // FIXME: The stitch step will encounter flipped normal problem because we flipped the edge direction here.
+                    -end_start.1
+                };
+                wait_connect_node_ids.push(end_start.0.index());
+                for _ in 0..self.round_steps {
+                    step_radius *= 0.5;
+                    step_from = step_from + step_direct * step_radius;
+                    wait_connect_node_ids.push(self.add_node(step_from, step_radius));
+                }
+                for i in 1..wait_connect_node_ids.len() {
+                    let from_node_id = wait_connect_node_ids[i - 1];
+                    let to_node_id = wait_connect_node_ids[i];
+                    if node_cut_subdiv_count.is_some() {
+                        self.set_node_cut_subdiv_count(to_node_id, node_cut_subdiv_count.unwrap());
+                    }
+                    self.add_edge(from_node_id, to_node_id);
+                }
+            }
+        }
+    }
+
     fn generate_from_node(&mut self, node_index: NodeIndex) {
         println!("generate_from_node:{:?}", node_index);
         if self.graph.node_weight(node_index).unwrap().generated {
@@ -397,6 +467,14 @@ impl Bmesh {
         let node_base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
         let node_position = self.graph.node_weight(node_index).unwrap().position;
         let node_radius = self.graph.node_weight(node_index).unwrap().radius;
+        let node_cut_subdiv_count = self.graph.node_weight(node_index).unwrap().cut_subdiv_count;
+        let cut_subdiv_count = {
+            if node_cut_subdiv_count.is_none() {
+                self.cut_subdiv_count
+            } else {
+                node_cut_subdiv_count.unwrap()
+            }
+        };
         let mut new_cuts : Vec<(EdgeIndex, (Vec<Id>, Vector3<f32>))> = Vec::new();
         let mut other_node_indices : Vec<NodeIndex> = Vec::new();
         {
@@ -413,7 +491,7 @@ impl Bmesh {
             }
             if neighbors_count == 1 {
                 let direct = directs[0];
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_base_norm);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_base_norm, cut_subdiv_count);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -426,7 +504,7 @@ impl Bmesh {
             } else if neighbors_count == 2 {
                 let mut order = 0;
                 let direct = (directs[0] - directs[1]) / 2.0;
-                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_base_norm);
+                let face = self.make_cut(node_position - direct * node_radius, direct, node_radius, node_base_norm, cut_subdiv_count);
                 let mut vert_ids = Vec::new();
                 for vert in face {
                     vert_ids.push(self.mesh.add_vertex(vert));
@@ -467,7 +545,7 @@ impl Bmesh {
                         }
                         let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
                         println!("round: {:?} other_index:{:?} r:{:?} direct:{:?}", round, other_index, create_radius, direct);
-                        let face = self.make_cut(create_origin, direct, create_radius, node_base_norm);
+                        let face = self.make_cut(create_origin, direct, create_radius, node_base_norm, cut_subdiv_count);
                         cuts.push((face, edge_index, other_index, direct));
                     }
                     let wrap_ok = {
@@ -589,6 +667,7 @@ impl Bmesh {
     pub fn generate_mesh(&mut self) -> &mut Mesh {
         let root_node = NodeIndex::new(self.generate_from_node_id);
         if self.node_count > 1 {
+            self.resolve_round();
             self.resolve_base_norm();
             self.generate_from_node(root_node);
             if 0 == self.wrap_error_count {
@@ -631,6 +710,8 @@ impl Node {
             triangle_ring_resolved: false,
             quad_ring_resolved: false,
             base_norm_resolved: false,
+            cut_subdiv_count: None,
+            round_way: None
         }
     }
 }
