@@ -13,6 +13,7 @@ mod bmesh;
 mod triangulate;
 mod wavefront;
 mod debug;
+mod skeletonmesh;
 
 use cgmath::Point3;
 
@@ -28,6 +29,7 @@ use triangulate::Triangulate;
 use subdivide::Subdivide;
 use iterator::FaceHalfedgeIterator;
 use debug::Debug;
+use skeletonmesh::SkeletonMesh;
 
 use std::cmp;
 
@@ -40,6 +42,8 @@ pub struct RustContext {
     free_mesh_ids: Vec<i32>,
     bmeshes: Vec<Bmesh>,
     free_bmesh_ids: Vec<i32>,
+    skeletonmeshes: Vec<SkeletonMesh>,
+    free_skeletonmesh_ids: Vec<i32>,
 }
 
 fn alloc_mesh_id(ctx: &mut RustContext) -> i32 {
@@ -76,6 +80,23 @@ fn free_bmesh_id(ctx: &mut RustContext, id: i32) {
     ctx.free_bmesh_ids.push(id);
 }
 
+fn alloc_skeletonmesh_id(ctx: &mut RustContext) -> i32 {
+    let mut id = 0;
+    if ctx.free_skeletonmesh_ids.len() > 0 {
+        id = ctx.free_skeletonmesh_ids[0];
+        ctx.free_skeletonmesh_ids.swap_remove(0);
+    } else {
+        ctx.skeletonmeshes.push(SkeletonMesh::new());
+        id = ctx.skeletonmeshes.len() as i32;
+    }
+    id
+}
+
+fn free_skeletonmesh_id(ctx: &mut RustContext, id: i32) {
+    ctx.skeletonmeshes[id as usize - 1] = SkeletonMesh::new();
+    ctx.free_skeletonmesh_ids.push(id);
+}
+
 #[no_mangle]
 pub extern "C" fn meshlite_create_context() -> *mut RustContext {
     Box::into_raw(Box::new(RustContext {
@@ -84,6 +105,8 @@ pub extern "C" fn meshlite_create_context() -> *mut RustContext {
         free_mesh_ids: Vec::new(),
         bmeshes: Vec::new(),
         free_bmesh_ids: Vec::new(),
+        skeletonmeshes: Vec::new(),
+        free_skeletonmesh_ids: Vec::new(),
     }))
 }
 
@@ -838,5 +861,54 @@ pub extern "C" fn meshlite_fix_hole(context: *mut RustContext, mesh_id: c_int) -
     let new_mesh_id = alloc_mesh_id(ctx);
     let new_mesh = ctx.meshes.get((mesh_id - 1) as usize).unwrap().fix_hole();
     ctx.meshes.insert((new_mesh_id - 1) as usize, new_mesh);
+    new_mesh_id
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_skeletonmesh_create(context: *mut RustContext) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_skeletonmesh_id = alloc_skeletonmesh_id(ctx);
+    new_skeletonmesh_id as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_skeletonmesh_set_end_radius(context: *mut RustContext, sklt_id: c_int, radius: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let sklt = ctx.skeletonmeshes.get_mut((sklt_id - 1) as usize).unwrap();
+    sklt.set_end_radius(radius);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_skeletonmesh_add_bone(context: *mut RustContext, sklt_id: c_int, from_x: c_float, from_y: c_float, from_z: c_float, to_x: c_float, to_y: c_float, to_z: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let sklt = ctx.skeletonmeshes.get_mut((sklt_id - 1) as usize).unwrap();
+    sklt.add_bone(Point3 {x: from_x, y: from_y, z: from_z}, Point3 {x: to_x, y: to_y, z: to_z});
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_skeletonmesh_generate_mesh(context: *mut RustContext, sklt_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let new_mesh_id = alloc_mesh_id(ctx);
+    let sklt = ctx.skeletonmeshes.get_mut((sklt_id - 1) as usize).unwrap();
+    let mesh = sklt.generate_mesh();
+    ctx.meshes.insert((new_mesh_id - 1) as usize, mesh.clone());
     new_mesh_id
 }
