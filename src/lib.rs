@@ -668,7 +668,6 @@ pub extern "C" fn meshlite_bmesh_add_edge(context: *mut RustContext, bmesh_id: c
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
-    println!("rust bmesh_id:{:?} first_node_id:{:?} second_node_id:{:?}", bmesh_id, first_node_id, second_node_id);
     bmesh.add_edge(first_node_id as usize, second_node_id as usize) as c_int
 }
 
@@ -767,6 +766,18 @@ pub extern "C" fn meshlite_bmesh_enable_debug(context: *mut RustContext, bmesh_i
 }
 
 #[no_mangle]
+pub extern "C" fn meshlite_bmesh_add_seam_requirement(context: *mut RustContext, bmesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    bmesh.add_seam_requirement();
+    0
+}
+
+#[no_mangle]
 pub extern "C" fn meshlite_bmesh_set_cut_subdiv_count(context: *mut RustContext, bmesh_id: c_int, subdiv_count: c_int) -> c_int {
     let ctx = unsafe {
         assert!(!context.is_null());
@@ -821,8 +832,46 @@ pub extern "C" fn meshlite_bmesh_error_count(context: *mut RustContext, bmesh_id
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
-    let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
+    let bmesh = ctx.bmeshes.get((bmesh_id - 1) as usize).unwrap();
     bmesh.error_count() as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_get_seam_count(context: *mut RustContext, bmesh_id: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get((bmesh_id - 1) as usize).unwrap();
+    bmesh.seams.len() as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_bmesh_get_seam_array(context: *mut RustContext, bmesh_id: c_int, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let bmesh = ctx.bmeshes.get((bmesh_id - 1) as usize).unwrap();
+    let count : isize = max_buffer_len as isize;
+    let mut i : isize = 0;
+    for seam in bmesh.seams.iter() {
+        if i + 1 + seam.len() as isize > count {
+            break;
+        }
+        unsafe {
+            *buffer.offset(i) = seam.len() as i32;
+        }
+        for j in 0..seam.len() as isize {
+            unsafe {
+                *buffer.offset(i + 1 + j) = seam[j as usize] as c_int - 1;
+            }
+        }
+        i += 1 + seam.len() as isize;
+    }
+    i as c_int
 }
 
 #[no_mangle]

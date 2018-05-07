@@ -297,3 +297,27 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
     //println!("make_quad end");
     f
 }
+
+pub fn pick_most_not_obvious_vertex(vertices: Vec<Point3<f32>>) -> usize {
+    if (vertices.len() <= 1) {
+        return 0;
+    }
+    let mut choosen_index = 0;
+    let mut choosen_x = vertices[0].x;
+    let pick_max = choosen_x < 0.0;
+    for i in 1..vertices.len() {
+        let x = vertices[i].x;
+        if pick_max {
+            if x > choosen_x {
+                choosen_index = i;
+                choosen_x = x;
+            }
+        } else {
+            if x < choosen_x {
+                choosen_index = i;
+                choosen_x = x;
+            }
+        }
+    }
+    choosen_index
+}

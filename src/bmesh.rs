@@ -13,6 +13,7 @@ use triangulate::Triangulate;
 use util::*;
 use iterator::FaceIterator;
 use iterator::FaceHalfedgeIterator;
+use iterator::VertexHalfedgeIterator;
 use debug::Debug;
 use subdivide::CatmullClarkSubdivider;
 use subdivide::Subdivide;
@@ -28,6 +29,9 @@ struct Node {
     cut_subdiv_count: Option<usize>,
     round_way: Option<i32>,
     generate_from_node_id: Option<usize>,
+    seam_resolved: bool,
+    generated_vertices: Vec<Vec<Id>>,
+    insert_order: isize,
 }
 
 struct Edge {
@@ -61,19 +65,21 @@ pub struct Bmesh {
     graph : Graph<Node, Edge, Undirected>,
     mesh: Mesh,
     neighbor_count_map: HashMap<usize, usize>,
-    neighbor_count_vec: Vec<(usize, usize)>,
+    neighbor_count_vec: Vec<(usize, usize, isize)>,
     resolve_ring_map: HashSet<Vec<NodeIndex>>,
     resolve_ring_list: Vec<Vec<NodeIndex>>,
     wrap_error_count: i32,
     node_count: usize,
     debug_enabled: bool,
-    generate_from_node_id: usize,
     cut_subdiv_count: usize,
     round_way: i32,
     deform_thickness: f32,
     deform_width: f32,
     vertex_node_map: HashMap<Id, NodeIndex>,
     round_steps: usize,
+    pub seams: Vec<Vec<usize>>,
+    seam_required: bool,
+    last_node_id: usize,
 }
 
 impl Bmesh {
@@ -88,13 +94,15 @@ impl Bmesh {
             wrap_error_count: 0,
             node_count: 0,
             debug_enabled: false,
-            generate_from_node_id: 0,
             cut_subdiv_count: 0,
             round_way: 0,
             deform_thickness: 1.0,
             deform_width: 1.0,
             vertex_node_map: HashMap::new(),
             round_steps: 1,
+            seams: Vec::new(),
+            seam_required: false,
+            last_node_id: 0,
         }
     }
 
@@ -116,6 +124,10 @@ impl Bmesh {
 
     pub fn enable_debug(&mut self, enable: bool) {
         self.debug_enabled = enable;
+    }
+
+    pub fn add_seam_requirement(&mut self) {
+        self.seam_required = true;
     }
 
     pub fn get_node_base_norm(&self, node_id: usize) -> Vector3<f32> {
@@ -187,22 +199,30 @@ impl Bmesh {
         self.resolve_base_norm_for_leaves_from_node(node_index, base_norm.unwrap());
     }
 
-    fn resolve_base_norm(&mut self) {
-        let mut vec : Vec<(usize, usize)> = Vec::new();
+    fn reorder_nodes_by_neighbor_count(&mut self) {
+        let mut vec : Vec<(usize, usize, isize)> = Vec::new();
         for (&k, &v) in self.neighbor_count_map.iter() {
-            vec.push((k, v));
+            vec.push((k, v, self.graph.node_weight(NodeIndex::new(k)).unwrap().insert_order));
         }
-        vec.sort_by(|a, b| b.1.cmp(&a.1));
-        for &(node_id, neighbor_count) in vec.iter() {
-            println!("resolve_base_norm node_id:{:?} neighbor_count:{:?}", node_id, neighbor_count);
+        vec.sort_by(|a, b| {
+            if b.1 == a.1 {
+                a.2.cmp(&b.2)
+            } else {
+                b.1.cmp(&a.1)
+            }
+        });
+        self.neighbor_count_vec = vec;
+    }
+
+    fn resolve_base_norm(&mut self) {
+        for &(node_id, neighbor_count, _) in self.neighbor_count_vec.clone().iter() {
             self.resolve_base_norm_from_node(NodeIndex::new(node_id));
         }
-        self.neighbor_count_vec = vec;
     }
 
     fn output_debug_info_if_enabled(&mut self) {
         if self.debug_enabled {
-            for &(node_id, _) in self.neighbor_count_vec.iter() {
+            for &(node_id, _, _) in self.neighbor_count_vec.iter() {
                 let node_index = NodeIndex::new(node_id);
                 let node_origin = self.graph.node_weight(node_index).unwrap().position;
                 let base_norm = self.graph.node_weight(node_index).unwrap().base_norm;
@@ -212,10 +232,13 @@ impl Bmesh {
     }
 
     pub fn add_node(&mut self, position: Point3<f32>, radius: f32) -> usize {
+        //println!("add_node position:{:?} radius:{:?}", position, radius);
         let node = Node::new(radius, position);
-        let node_id = self.graph.add_node(node).index();
+        let node_index = self.graph.add_node(node);
+        let node_id = node_index.index();
+        self.graph.node_weight_mut(node_index).unwrap().insert_order = self.node_count as isize;
         self.node_count += 1;
-        self.generate_from_node_id = node_id;
+        self.last_node_id = node_id;
         node_id
     }
 
@@ -462,7 +485,6 @@ impl Bmesh {
     }
 
     fn generate_from_node(&mut self, node_index: NodeIndex) {
-        println!("generate_from_node:{:?}", node_index);
         if self.graph.node_weight(node_index).unwrap().generated {
             return;
         }
@@ -610,12 +632,17 @@ impl Bmesh {
             }
         }
         for (edge_index, cut) in new_cuts {
+            let mut generated_vertices = Vec::new();
             for &vertex_id in cut.0.iter() {
                 self.vertex_node_map.insert(vertex_id, node_index);
                 self.mesh.vertex_mut(vertex_id).unwrap().source = user_node_id as i32;
+                generated_vertices.push(vertex_id);
             }
-            let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
-            edge.cuts.push(cut);
+            {
+                let ref mut edge = self.graph.edge_weight_mut(edge_index).unwrap();
+                edge.cuts.push(cut);
+            }
+            self.graph.node_weight_mut(node_index).unwrap().generated_vertices.push(generated_vertices);
         }
         for other_index in other_node_indices {
             self.generate_from_node(other_index);
@@ -641,7 +668,7 @@ impl Bmesh {
     fn resolve_deform(&mut self) {
         for vert in self.mesh.vertices.iter_mut() {
             let node_index = if self.vertex_node_map.is_empty() {
-                NodeIndex::new(self.generate_from_node_id)
+                NodeIndex::new(self.neighbor_count_vec[0].0)
             } else {
                 self.vertex_node_map[&vert.id]
             };
@@ -676,12 +703,83 @@ impl Bmesh {
         }
     }
 
+    fn resolve_seam_from_node(&mut self, node_index: NodeIndex, from_vertex_id: Id, seam: &mut Vec<Id>) {
+        // Check seam_resolved in caller, don't check it here
+        self.graph.node_weight_mut(node_index).unwrap().seam_resolved = true;
+        seam.push(from_vertex_id);
+        let halfedges = self.mesh.vertex(from_vertex_id).unwrap().halfedges.clone();
+        let mut ids = Vec::new();
+        for halfedge_id in halfedges {
+            let next_halfedge_id = self.mesh.halfedge_next_id(halfedge_id);
+            if next_halfedge_id.is_none() {
+                continue;
+            }
+            let vertex_id = self.mesh.halfedge_start_vertex_id(next_halfedge_id.unwrap()).unwrap();
+            let next_node_id = self.mesh.vertex_mut(vertex_id).unwrap().source as usize;
+            if next_node_id == node_index.index() {
+                continue;
+            }
+            if self.graph.node_weight_mut(NodeIndex::new(next_node_id)).unwrap().seam_resolved {
+                continue;
+            }
+            ids.push(vertex_id);
+        }
+        let mut positions = Vec::new();
+        for &vert_id in ids.iter() {
+            positions.push(self.mesh.vertex(vert_id).unwrap().position);
+        }
+        if positions.is_empty() {
+            return;
+        }
+        let vertex_index = pick_most_not_obvious_vertex(positions);
+        let next_from_vertex_id = ids[vertex_index];
+        let next_node_index = NodeIndex::new(self.mesh.vertex_mut(next_from_vertex_id).unwrap().source as usize);
+        if self.neighbor_count_map[&next_node_index.index()] != 2 {
+            return;
+        }
+        self.resolve_seam_from_node(next_node_index, next_from_vertex_id, seam);
+    }
+
+    fn resolve_seam(&mut self) {
+        for (k, v) in self.neighbor_count_map.clone() {
+            if 2 != v {
+                let node_index = NodeIndex::new(k);
+                {
+                    if self.graph.node_weight(node_index).unwrap().seam_resolved {
+                        continue;
+                    }
+                }
+                let generated_vertices = self.graph.node_weight(node_index).unwrap().generated_vertices.clone();
+                for vertices in generated_vertices {
+                    let mut positions = Vec::new();
+                    for &vert_id in vertices.iter() {
+                        positions.push(self.mesh.vertex(vert_id).unwrap().position);
+                    }
+                    if positions.is_empty() {
+                        continue;
+                    }
+                    let vertex_index = pick_most_not_obvious_vertex(positions);
+                    let mut seam : Vec<Id> = Vec::new();
+                    self.resolve_seam_from_node(node_index, vertices[vertex_index], &mut seam);
+                    if seam.len() > 1 {
+                        self.seams.push(seam);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn generate_mesh(&mut self) -> &mut Mesh {
-        let root_node = NodeIndex::new(self.generate_from_node_id);
         if self.node_count > 1 {
+            self.reorder_nodes_by_neighbor_count();
+            let root_node_id = self.neighbor_count_vec[0].0;
+            let root_node = NodeIndex::new(root_node_id);
             self.resolve_round();
             self.resolve_base_norm();
             self.generate_from_node(root_node);
+            if self.seam_required {
+                self.resolve_seam();
+            }
             if 0 == self.wrap_error_count {
                 self.stitch_by_edges();
                 self.resolve_ring_from_node(root_node);
@@ -692,6 +790,8 @@ impl Bmesh {
             }
             self.output_debug_info_if_enabled();
         } else {
+            let root_node_id = self.last_node_id;
+            let root_node = NodeIndex::new(root_node_id);
             let node_position = self.graph.node_weight(root_node).unwrap().position;
             let node_radius = self.graph.node_weight(root_node).unwrap().radius;
             let face_id = self.mesh.add_plane(node_radius, node_radius);
@@ -702,6 +802,9 @@ impl Bmesh {
             if self.cut_subdiv_count > 0 {
                 let subdived_mesh = self.mesh.subdivide();
                 self.mesh = subdived_mesh;
+            }
+            for vertex in self.mesh.vertices.iter_mut() {
+                vertex.source = root_node_id as i32;
             }
             if (self.deform_thickness - 1.0).abs() > SMALL_NUM ||
                     (self.deform_width - 1.0).abs() > SMALL_NUM {
@@ -724,7 +827,10 @@ impl Node {
             base_norm_resolved: false,
             cut_subdiv_count: None,
             round_way: None,
-            generate_from_node_id: None
+            generate_from_node_id: None,
+            seam_resolved: false,
+            generated_vertices: Vec::new(),
+            insert_order: 0
         }
     }
 }
