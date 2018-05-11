@@ -668,7 +668,7 @@ impl Bmesh {
     fn resolve_deform(&mut self) {
         for vert in self.mesh.vertices.iter_mut() {
             let node_index = if self.vertex_node_map.is_empty() {
-                NodeIndex::new(self.neighbor_count_vec[0].0)
+                NodeIndex::new(self.last_node_id)
             } else {
                 self.vertex_node_map[&vert.id]
             };
