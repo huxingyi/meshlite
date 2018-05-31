@@ -24,6 +24,7 @@ pub struct SkeletonMesh {
     bones: Vec<Bone>,
     mesh: Mesh,
     end_radius: f32,
+    max_radius: f32,
 }
 
 impl SkeletonMesh {
@@ -31,7 +32,8 @@ impl SkeletonMesh {
         SkeletonMesh {
             bones: Vec::new(),
             mesh: Mesh::new(),
-            end_radius: 0.005
+            end_radius: 0.005,
+            max_radius: 0.025
         }
     }
 
@@ -61,7 +63,10 @@ impl SkeletonMesh {
             self.add_sphere(bone.to, end_radius);
             let bone_vector = bone.to - bone.from;
             let norm = bone_vector.normalize();
-            let big_radius = bone_vector.magnitude() * 0.15;
+            let mut big_radius = bone_vector.magnitude() * 0.15;
+            if big_radius > self.max_radius {
+                big_radius = self.max_radius;
+            }
             let big_end_quad = make_quad(bone.from, norm, end_radius, norm);
             let small_end_quad = make_quad(bone.to, -norm, end_radius, -norm);
             let middle_for_big_quad = make_quad((bone.from + bone_vector * 0.2) - (-norm) * big_radius, -norm, big_radius, -norm);
