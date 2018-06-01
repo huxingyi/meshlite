@@ -187,7 +187,7 @@ impl Mesh {
             let n = norm(points[i], points[(i + 1) % points.len()], points[(i + 2) % points.len()]);
             total += n;
         }
-        total / points.len() as f32
+        total.normalize()
     }
 
     pub fn face(&self, id: Id) -> Option<&Face> {
