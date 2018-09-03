@@ -72,6 +72,7 @@ pub struct Bmesh {
     deform_thickness: f32,
     deform_width: f32,
     vertex_node_map: HashMap<Id, NodeIndex>,
+    vertex_cut_direct_map: HashMap<Id, Vector3<f32>>,
     round_steps: usize,
     pub seams: Vec<Vec<usize>>,
     seam_required: bool,
@@ -93,6 +94,7 @@ impl Bmesh {
             deform_thickness: 1.0,
             deform_width: 1.0,
             vertex_node_map: HashMap::new(),
+            vertex_cut_direct_map: HashMap::new(),
             round_steps: 1,
             seams: Vec::new(),
             seam_required: false,
@@ -483,6 +485,7 @@ impl Bmesh {
             let mut generated_vertices = Vec::new();
             for &vertex_id in cut.0.iter() {
                 self.vertex_node_map.insert(vertex_id, node_index);
+                self.vertex_cut_direct_map.insert(vertex_id, cut.1);
                 self.mesh.vertex_mut(vertex_id).unwrap().source = user_node_id as i32;
                 generated_vertices.push(vertex_id);
             }
@@ -536,12 +539,14 @@ impl Bmesh {
                 num += 1;
             }
             if (self.deform_width - 1.0).abs() > SMALL_NUM {
-                let width_deformed_position = calculate_deform_position(vert.position,
-                    vert_ray, world_perp(node_base_norm), self.deform_width);
-                sum_x += width_deformed_position.x;
-                sum_y += width_deformed_position.y;
-                sum_z += width_deformed_position.z;
-                num += 1;
+                if let Some(&cut_direct) = self.vertex_cut_direct_map.get(&vert.id) {
+                    let width_deformed_position = calculate_deform_position(vert.position,
+                        vert_ray, node_base_norm.cross(cut_direct), self.deform_width);
+                    sum_x += width_deformed_position.x;
+                    sum_y += width_deformed_position.y;
+                    sum_z += width_deformed_position.z;
+                    num += 1;
+                }
             }
             if num > 0 {
                 vert.position.x = sum_x / num as f32;
