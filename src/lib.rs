@@ -32,6 +32,7 @@ use debug::Debug;
 use skeletonmesh::SkeletonMesh;
 
 use std::cmp;
+use std::collections::HashSet;
 
 const MAGIC_NUM: u32 = 12345678;
 
@@ -678,7 +679,7 @@ pub extern "C" fn meshlite_bmesh_generate_mesh(context: *mut RustContext, bmesh_
         &mut *context
     };
     assert_eq!(ctx.magic, MAGIC_NUM);
-    println!("rust bmesh_id:{:?}", bmesh_id);
+    //println!("rust bmesh_id:{:?}", bmesh_id);
     let new_mesh_id = alloc_mesh_id(ctx);
     let bmesh = ctx.bmeshes.get_mut((bmesh_id - 1) as usize).unwrap();
     let mesh = bmesh.generate_mesh();
@@ -960,4 +961,33 @@ pub extern "C" fn meshlite_skeletonmesh_generate_mesh(context: *mut RustContext,
     let mesh = sklt.generate_mesh();
     ctx.meshes.insert((new_mesh_id - 1) as usize, mesh.clone());
     new_mesh_id
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_smooth(context: *mut RustContext, mesh_id: c_int, factor: c_float) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    ctx.meshes.get_mut((mesh_id - 1) as usize).unwrap().smooth(factor, None);
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn meshlite_smooth_vertices(context: *mut RustContext, mesh_id: c_int, factor: c_float, buffer: *mut c_int, max_buffer_len: c_int) -> c_int {
+    let ctx = unsafe {
+        assert!(!context.is_null());
+        &mut *context
+    };
+    assert_eq!(ctx.magic, MAGIC_NUM);
+    let mut offset = 0;
+    let mut vertex_ids = HashSet::new();
+    for i in 0..max_buffer_len {
+        let vertex_id = unsafe { *buffer.offset(offset) } as usize;
+        vertex_ids.insert(vertex_id);
+        offset += 1;
+    }
+    ctx.meshes.get_mut((mesh_id - 1) as usize).unwrap().smooth(factor, Some(&vertex_ids));
+    0
 }

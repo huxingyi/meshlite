@@ -458,12 +458,12 @@ impl Mesh {
         let mut added_vertices = Vec::new();
         added_vertices.push(first_id);
         visited_sets.insert(first_id);
-        println!("first_id {:?}", first_id);
+        //println!("first_id {:?}", first_id);
         while linked_vertices.contains_key(&vert) && linked_vertices[&vert] != first_id {
             vert = linked_vertices[&vert];
-            println!("vert {:?}", vert);
+            //println!("vert {:?}", vert);
             if visited_sets.contains(&vert) {
-                println!("visited_sets.contains {:?}", vert);
+                //println!("visited_sets.contains {:?}", vert);
                 return 0;
             }
             visited_sets.insert(vert);
@@ -1333,6 +1333,63 @@ impl Mesh {
         }
         while new_mesh.add_linked_vertices(&mut border_map) > 0 {};
         new_mesh
+    }
+
+    pub fn smooth(&mut self, factor: f32, limit_vertices: Option<&HashSet<usize>>) {
+        let mut neighbor_position_sum_map : HashMap<Id, (Point3<f32>, usize)> = HashMap::new();
+        let mut face_norm_map : HashMap<Id, Vector3<f32>> = HashMap::new();
+        for face_id in FaceIterator::new(self) {
+            for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
+                let from_vert = self.halfedge_start_vertex(halfedge_id);
+                if from_vert.is_some() {
+                    let next_halfedge_id = self.halfedge_next_id(halfedge_id);
+                    if next_halfedge_id.is_some() {
+                        let to_vert = self.halfedge_start_vertex(next_halfedge_id.unwrap());
+                        if to_vert.is_some() {
+                            if limit_vertices.is_none() || limit_vertices.unwrap().contains(&to_vert.unwrap().id) {
+                                let item = &mut neighbor_position_sum_map.entry(to_vert.unwrap().id).or_insert((Point3 {x:0.0, y:0.0, z:0.0}, 0));
+                                item.0 += from_vert.unwrap().position.to_vec();
+                                item.1 += 1;
+                                face_norm_map.entry(face_id).or_insert_with(|| self.face_norm(face_id));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let self_factor = 1.0 - factor;
+        let mut old_position_map: HashMap<Id, Point3<f32>> = HashMap::new();
+        for vert in self.vertices.iter_mut() {
+            match neighbor_position_sum_map.get(&vert.id) {
+                Some(&sum_and_count) => {
+                    if sum_and_count.1 > 0 {
+                        let old_position = vert.position;
+                        old_position_map.entry(vert.id).or_insert(old_position);
+                        vert.position = (sum_and_count.0 / sum_and_count.1 as f32) * factor + old_position.to_vec() * self_factor;
+                    }
+                },
+                _ => {}
+            }
+        }
+        let mut change_back_pairs : Vec<(Id, Point3<f32>)> = Vec::new();
+        for (face_id, face_normal) in face_norm_map {
+            if face_normal.dot(self.face_norm(face_id)) <= 0.0 {
+                for halfedge_id in FaceHalfedgeIterator::new(self, self.face_first_halfedge_id(face_id).unwrap()) {
+                    let from_vert = self.halfedge_start_vertex(halfedge_id);
+                    if from_vert.is_some() {
+                        match old_position_map.get(&from_vert.unwrap().id) {
+                            Some(&old_position) => {
+                                change_back_pairs.push((from_vert.unwrap().id, old_position));
+                            },
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        for (vert_id, old_position) in change_back_pairs {
+            self.vertex_mut(vert_id).unwrap().position = old_position;
+        }
     }
 }
 

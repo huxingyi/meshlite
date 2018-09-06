@@ -427,7 +427,7 @@ impl Bmesh {
                             create_origin += direct * (node_radius * factor);
                         }
                         let edge_index = self.graph.find_edge(node_index, other_index).unwrap();
-                        println!("round: {:?} other_index:{:?} r:{:?} direct:{:?}", round, other_index, create_radius, direct);
+                        //println!("round: {:?} other_index:{:?} r:{:?} direct:{:?}", round, other_index, create_radius, direct);
                         let face = self.make_cut(create_origin, direct, create_radius, node_base_norm, cut_subdiv_count);
                         cuts.push((face, edge_index, other_index, direct));
                     }
