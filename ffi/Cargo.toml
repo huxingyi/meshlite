@@ -1,0 +1,13 @@
+[package]
+name = "meshlite_ffi"
+version = "0.1.0"
+authors = ["Xingyi HU <huxingyi@msn.com>"]
+
+[lib]
+name = "meshlite_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+cgmath = "0.16"
+meshlite = { path = "../" }
+

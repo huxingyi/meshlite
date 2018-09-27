@@ -1,11 +1,11 @@
 [package]
 name = "meshlite"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Xingyi HU <huxingyi@msn.com>"]
 
 [lib]
 name = "meshlite"
-crate-type = ["cdylib"]
+crate-type = ["lib"]
 
 [dependencies]
 cgmath = "0.16"
