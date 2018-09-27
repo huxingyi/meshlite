@@ -2,22 +2,19 @@ extern crate cgmath;
 extern crate meshlite;
 
 use std::ffi::CStr;
-use std::os::raw::{c_int, c_uint, c_char, c_float};
+use std::os::raw::{c_int, c_char, c_float};
 
 use cgmath::Point3;
 
 use meshlite::bmesh::Bmesh;
-use meshlite::debug::Debug;
 use meshlite::iterator::FaceHalfedgeIterator;
 use meshlite::mesh::Export;
 use meshlite::mesh::Id;
 use meshlite::mesh::Import;
 use meshlite::mesh::Mesh;
 use meshlite::skeletonmesh::SkeletonMesh;
-use meshlite::subdivide::CatmullClarkSubdivider;
 use meshlite::subdivide::Subdivide;
 use meshlite::triangulate::Triangulate;
-use meshlite::wrap::GiftWrapper;
 
 use std::cmp;
 use std::collections::HashSet;
@@ -36,15 +33,12 @@ pub struct RustContext {
 }
 
 fn alloc_mesh_id(ctx: &mut RustContext) -> i32 {
-    let mut id = 0;
     if ctx.free_mesh_ids.len() > 0 {
-        id = ctx.free_mesh_ids[0];
-        ctx.free_mesh_ids.swap_remove(0);
+        ctx.free_mesh_ids.swap_remove(0)
     } else {
         ctx.meshes.push(Mesh::new());
-        id = ctx.meshes.len() as i32;
+        ctx.meshes.len() as i32
     }
-    id
 }
 
 fn free_mesh_id(ctx: &mut RustContext, id: i32) {
@@ -53,15 +47,12 @@ fn free_mesh_id(ctx: &mut RustContext, id: i32) {
 }
 
 fn alloc_bmesh_id(ctx: &mut RustContext) -> i32 {
-    let mut id = 0;
     if ctx.free_bmesh_ids.len() > 0 {
-        id = ctx.free_bmesh_ids[0];
-        ctx.free_bmesh_ids.swap_remove(0);
+        ctx.free_bmesh_ids.swap_remove(0)
     } else {
         ctx.bmeshes.push(Bmesh::new());
-        id = ctx.bmeshes.len() as i32;
+        ctx.bmeshes.len() as i32
     }
-    id
 }
 
 fn free_bmesh_id(ctx: &mut RustContext, id: i32) {
@@ -70,21 +61,21 @@ fn free_bmesh_id(ctx: &mut RustContext, id: i32) {
 }
 
 fn alloc_skeletonmesh_id(ctx: &mut RustContext) -> i32 {
-    let mut id = 0;
     if ctx.free_skeletonmesh_ids.len() > 0 {
-        id = ctx.free_skeletonmesh_ids[0];
-        ctx.free_skeletonmesh_ids.swap_remove(0);
+        ctx.free_skeletonmesh_ids.swap_remove(0)
     } else {
         ctx.skeletonmeshes.push(SkeletonMesh::new());
-        id = ctx.skeletonmeshes.len() as i32;
+        ctx.skeletonmeshes.len() as i32
     }
-    id
 }
 
-fn free_skeletonmesh_id(ctx: &mut RustContext, id: i32) {
-    ctx.skeletonmeshes[id as usize - 1] = SkeletonMesh::new();
-    ctx.free_skeletonmesh_ids.push(id);
-}
+
+// Commented out to allow a clean build free from warnings.
+//
+// fn free_skeletonmesh_id(ctx: &mut RustContext, id: i32) {
+//     ctx.skeletonmeshes[id as usize - 1] = SkeletonMesh::new();
+//     ctx.free_skeletonmesh_ids.push(id);
+// }
 
 #[no_mangle]
 pub extern "C" fn meshlite_create_context() -> *mut RustContext {
@@ -403,7 +394,7 @@ pub extern "C" fn meshlite_get_halfedge_normal_array(context: *mut RustContext, 
         if i + face_halfedge_count as isize * 3 > count {
             break;
         }
-        for j in 0..face_halfedge_count {
+        for _ in 0..face_halfedge_count {
             unsafe {
                 *buffer.offset(i + 0) = norm.x;
                 *buffer.offset(i + 1) = norm.y;
@@ -574,7 +565,7 @@ pub extern "C" fn meshlite_build(context: *mut RustContext, vertex_position_buff
     let mesh = ctx.meshes.get_mut((new_mesh_id - 1) as usize).unwrap();
     let mut offset = 0;
     let mut vertex_ids = Vec::new();
-    for i in 0..vertex_count {
+    for _ in 0..vertex_count {
         vertex_ids.push(mesh.add_vertex(unsafe {
             Point3 {
                 x: *vertex_position_buffer.offset(offset + 0),
@@ -591,7 +582,7 @@ pub extern "C" fn meshlite_build(context: *mut RustContext, vertex_position_buff
         };
         offset += 1;
         let mut added_vertices = Vec::new();
-        for i in 0..index_count {
+        for _ in 0..index_count {
             let index = unsafe {
                 *face_index_buffer.offset(offset)
             };
@@ -971,7 +962,7 @@ pub extern "C" fn meshlite_smooth_vertices(context: *mut RustContext, mesh_id: c
     assert_eq!(ctx.magic, MAGIC_NUM);
     let mut offset = 0;
     let mut vertex_ids = HashSet::new();
-    for i in 0..max_buffer_len {
+    for _ in 0..max_buffer_len {
         let vertex_id = unsafe { *buffer.offset(offset) } as usize;
         vertex_ids.insert(vertex_id);
         offset += 1;

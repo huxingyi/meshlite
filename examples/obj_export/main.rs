@@ -1,15 +1,16 @@
 extern crate cgmath;
+extern crate meshlite;
 extern crate petgraph;
 
-mod mesh;
-mod subdivide;
-mod iterator;
-mod util;
-mod wrap;
-mod bmesh;
-mod triangulate;
-mod wavefront;
-mod debug;
+use meshlite::mesh;
+use meshlite::subdivide;
+use meshlite::iterator;
+use meshlite::util;
+use meshlite::wrap;
+use meshlite::bmesh;
+use meshlite::triangulate;
+use meshlite::wavefront;
+use meshlite::debug;
 
 use cgmath::Matrix4;
 use cgmath::prelude::*;

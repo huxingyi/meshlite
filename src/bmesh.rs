@@ -1,22 +1,16 @@
+use cgmath::InnerSpace;
 use cgmath::Point3;
 use cgmath::Vector3;
-use cgmath::prelude::*;
-use cgmath::Matrix4;
-use mesh::Mesh;
+use debug::Debug;
 use mesh::Id;
-use petgraph::prelude::*;
+use mesh::Mesh;
 use petgraph::Graph;
+use petgraph::prelude::*;
 use std::collections::HashMap;
-use std::collections::HashSet;
-use wrap::GiftWrapper;
+use subdivide::Subdivide;
 use triangulate::Triangulate;
 use util::*;
-use iterator::FaceIterator;
-use iterator::FaceHalfedgeIterator;
-use iterator::VertexHalfedgeIterator;
-use debug::Debug;
-use subdivide::CatmullClarkSubdivider;
-use subdivide::Subdivide;
+use wrap::GiftWrapper;
 
 struct Node {
     radius: f32,
@@ -36,28 +30,30 @@ struct Edge {
     cuts: Vec<(Vec<Id>, Vector3<f32>)>,
 }
 
-struct Ring {
-    pub key: Vec<NodeIndex>,
-    pub nodes: Vec<NodeIndex>
-}
-
-impl Ring {
-    pub fn new(first: NodeIndex, second: NodeIndex, third: NodeIndex, fourth: NodeIndex) -> Self {
-        let mut nodes = Vec::new();
-        nodes.push(first);
-        nodes.push(second);
-        nodes.push(third);
-        if fourth != NodeIndex::end() {
-            nodes.push(fourth);
-        }
-        let mut key = nodes.clone();
-        key.sort();
-        Ring {
-            key: key,
-            nodes: nodes,
-        }
-    }
-}
+// Commented out to allow a clean build, free from warnings.
+//
+// struct Ring {
+//     pub key: Vec<NodeIndex>,
+//     pub nodes: Vec<NodeIndex>
+// }
+// 
+// impl Ring {
+//     pub fn new(first: NodeIndex, second: NodeIndex, third: NodeIndex, fourth: NodeIndex) -> Self {
+//         let mut nodes = Vec::new();
+//         nodes.push(first);
+//         nodes.push(second);
+//         nodes.push(third);
+//         if fourth != NodeIndex::end() {
+//             nodes.push(fourth);
+//         }
+//         let mut key = nodes.clone();
+//         key.sort();
+//         Ring {
+//             key: key,
+//             nodes: nodes,
+//         }
+//     }
+// }
 
 pub struct Bmesh {
     graph : Graph<Node, Edge, Undirected>,
@@ -211,7 +207,7 @@ impl Bmesh {
     }
 
     fn resolve_base_norm(&mut self) {
-        for &(node_id, neighbor_count, _) in self.neighbor_count_vec.clone().iter() {
+        for &(node_id, _neighbor_count, _) in self.neighbor_count_vec.clone().iter() {
             self.resolve_base_norm_from_node(NodeIndex::new(node_id));
         }
     }
@@ -435,7 +431,7 @@ impl Bmesh {
                         // test wrap
                         let mut added_loops : Vec<(Vec<Id>, Vector3<f32>)> = Vec::new();
                         let mut test_mesh = Mesh::new();
-                        for (face, edge_index, other_index, direct) in cuts.clone() {
+                        for (face, _edge_index, _other_index, direct) in cuts.clone() {
                             let mut vert_ids = Vec::new();
                             for vert in face {
                                 vert_ids.push(test_mesh.add_vertex(vert));
@@ -461,7 +457,7 @@ impl Bmesh {
                 if cuts.len() > 0 {
                     // real wrap
                     let mut added_loops : Vec<(Vec<Id>, Vector3<f32>)> = Vec::new();
-                    for (face, edge_index, other_index, direct) in cuts {
+                    for (face, edge_index, _other_index, direct) in cuts {
                         let mut vert_ids = Vec::new();
                         for vert in face {
                             vert_ids.push(self.mesh.add_vertex(vert));

@@ -1,10 +1,6 @@
 use cgmath::Point3;
-use cgmath::Vector3;
-use cgmath::prelude::*;
+use cgmath::EuclideanSpace;
 use std::collections::HashMap;
-use std::ops::Mul;
-use std::ops::Add;
-use std::ops::Sub;
 use mesh::Mesh;
 use mesh::Id;
 use iterator::FaceIterator;

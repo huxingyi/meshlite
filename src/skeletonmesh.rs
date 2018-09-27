@@ -1,16 +1,7 @@
 use cgmath::Point3;
-use cgmath::Vector3;
 use cgmath::prelude::*;
-use cgmath::Matrix4;
 use mesh::Mesh;
-use mesh::Id;
-use petgraph::prelude::*;
-use petgraph::Graph;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use util::*;
-use debug::Debug;
-use subdivide::CatmullClarkSubdivider;
 use subdivide::Subdivide;
 use wrap::GiftWrapper;
 

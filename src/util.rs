@@ -182,15 +182,15 @@ pub fn is_valid_norm(norm: Vector3<f32>) -> bool {
 }
 
 pub fn pick_base_plane_norm(directs: Vec<Vector3<f32>>, positions: Vec<Point3<f32>>, weights: Vec<f32>) -> Option<Vector3<f32>> {
-    if (directs.len() <= 1) {
+    if directs.len() <= 1 {
         None
-    } else if (directs.len() <= 2) {
+    } else if directs.len() <= 2 {
         // >=15 degrees && <= 165 degrees
         if directs[0].dot(directs[1]).abs() < 0.966 {
             return Some(directs[0].cross(directs[1]).normalize())
         }
         None
-    } else if (directs.len() <= 3) {
+    } else if directs.len() <= 3 {
         let norm = norm(positions[0], positions[1], positions[2]);
         if is_valid_norm(norm) {
             return Some(norm.normalize());
@@ -272,7 +272,7 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
             -base_norm_normalized
         }
     };
-    let mut u = {
+    let u = {
         if direct_normalized.dot(oriented_base_norm).abs() > 0.707 {
             // same direction with < 45 deg
             //println!("< 45 deg");
@@ -284,11 +284,11 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
             direct_normalized.cross(oriented_base_norm)
         }
     };
-    let mut v = u.cross(direct);
+    let v = u.cross(direct);
     let u = u.normalize() * radius;
     let v = v.normalize() * radius;
     let origin = position + direct * radius;
-    let mut f = vec![origin - u - v,
+    let f = vec![origin - u - v,
         origin + u - v,
         origin + u + v,
         origin - u + v];
@@ -299,7 +299,7 @@ pub fn make_quad(position: Point3<f32>, direct: Vector3<f32>, radius: f32, base_
 }
 
 pub fn pick_most_not_obvious_vertex(vertices: Vec<Point3<f32>>) -> usize {
-    if (vertices.len() <= 1) {
+    if vertices.len() <= 1 {
         return 0;
     }
     let mut choosen_index = 0;

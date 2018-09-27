@@ -3,10 +3,6 @@ use cgmath::Vector3;
 use cgmath::prelude::*;
 use cgmath::Matrix4;
 use std::option::Option;
-use std::fs::File;
-use std::io::prelude::*;
-use std::string::String;
-use std::str::FromStr;
 use std::io;
 use std::vec::Vec;
 use std::collections::HashMap;
@@ -1283,7 +1279,7 @@ impl Mesh {
                 }
             }
         }
-        for (key, face_list) in endpoints {
+        for (_key, face_list) in endpoints {
             if face_list.len() != 2 {
                 for face_id in face_list {
                     broken_face_set.insert(face_id);
