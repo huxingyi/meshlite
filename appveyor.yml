@@ -20,12 +20,14 @@ install:
 build: false
 
 test_script:
+  - cd ffi
   - cargo build --release --verbose
+  - cd ..
 
 after_test:
-  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\include\meshlite.h
-  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite_ffi.dll
-  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\target\release\meshlite_ffi.dll.lib
+  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\ffi\include\meshlite.h
+  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\ffi\target\release\meshlite_ffi.dll
+  - 7z a meshlite_unstable_vc14_%PLATFORM%.zip %APPVEYOR_BUILD_FOLDER%\ffi\target\release\meshlite_ffi.dll.lib
 
 artifacts:
   - path: '*.zip'
