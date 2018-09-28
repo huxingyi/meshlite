@@ -1,4 +1,3 @@
-use cgmath::{Point3};
 use mesh::Mesh;
 use mesh::Id;
 use std::collections::HashMap;
