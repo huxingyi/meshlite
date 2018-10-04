@@ -70,11 +70,11 @@ impl<'a> CatmullClarkSubdivider<'a> {
 
     fn face_data_mut(&mut self, id: Id) -> &mut FaceData {
         let center = self.mesh.face_center(id);
-        let generated_vertex_id = self.generated_mesh.add_vertex(center);
+        let internal_borrow = &mut self.generated_mesh;
         self.face_data_set.entry(id).or_insert_with(|| {
             let mut data = FaceData::new();
             data.average_of_points = center;
-            data.generated_vertex_id = generated_vertex_id;
+            data.generated_vertex_id = internal_borrow.add_vertex(center);
             Box::new(data)
         })
     }
@@ -97,11 +97,12 @@ impl<'a> CatmullClarkSubdivider<'a> {
            start_vertex_position,
            stop_vertex_position,
         ];
-        let generated_vertex_id = self.generated_mesh.add_vertex(Point3::centroid(&array));
+        let internal_borrow = &mut self.generated_mesh;
         self.edge_data_set.entry(id).or_insert_with(|| {
             let mut data = EdgeData::new();
             data.mid_point = mid_point;
-            data.generated_vertex_id = generated_vertex_id;
+            let center = Point3::centroid(&array);
+            data.generated_vertex_id = internal_borrow.add_vertex(center);
             Box::new(data)
         })
     }
@@ -132,10 +133,10 @@ impl<'a> CatmullClarkSubdivider<'a> {
         let position = (((average_of_edge * 2.0) + bury_center.to_vec()) + 
                         (vertex_position.to_vec() * ((average_of_faces.len() as i32 - 3).abs() as f32))) / 
             (average_of_faces.len() as f32);
-        let generated_vertex_id = self.generated_mesh.add_vertex(position);
+        let internal_borrow = &mut self.generated_mesh;
         self.vertex_data_set.entry(id).or_insert_with(|| {
             let mut data = VertexData::new();
-            data.generated_vertex_id = generated_vertex_id;
+            data.generated_vertex_id = internal_borrow.add_vertex(position);
             Box::new(data)
         })
     }
