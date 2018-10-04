@@ -1,6 +1,7 @@
 use cgmath::Point3;
 use cgmath::EuclideanSpace;
-use std::collections::HashMap;
+//use std::collections::HashMap;
+use fnv::FnvHashMap;
 use mesh::Mesh;
 use mesh::Id;
 use iterator::FaceIterator;
@@ -49,9 +50,12 @@ impl VertexData {
 
 pub struct CatmullClarkSubdivider<'a> {
     mesh: &'a Mesh,
-    face_data_set: HashMap<Id, Box<FaceData>>,
-    edge_data_set: HashMap<Id, Box<EdgeData>>,
-    vertex_data_set: HashMap<Id, Box<VertexData>>,
+    //face_data_set: HashMap<Id, Box<FaceData>>,
+    //edge_data_set: HashMap<Id, Box<EdgeData>>,
+    //vertex_data_set: HashMap<Id, Box<VertexData>>,
+    face_data_set: FnvHashMap<Id, Box<FaceData>>,
+    edge_data_set: FnvHashMap<Id, Box<EdgeData>>,
+    vertex_data_set: FnvHashMap<Id, Box<VertexData>>,
     generated_mesh: Mesh,
     finished: bool,
 }
@@ -60,9 +64,12 @@ impl<'a> CatmullClarkSubdivider<'a> {
     pub fn new(mesh: &'a Mesh) -> Self {
         CatmullClarkSubdivider {
             mesh: mesh,
-            face_data_set: HashMap::new(),
-            edge_data_set: HashMap::new(),
-            vertex_data_set: HashMap::new(),
+            //face_data_set: HashMap::new(),
+            //edge_data_set: HashMap::new(),
+            //vertex_data_set: HashMap::new(),
+            face_data_set: FnvHashMap::default(),
+            edge_data_set: FnvHashMap::default(),
+            vertex_data_set: FnvHashMap::default(),
             generated_mesh: Mesh::new(),
             finished: false,
         }

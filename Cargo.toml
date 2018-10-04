@@ -10,3 +10,4 @@ crate-type = ["lib"]
 [dependencies]
 cgmath = "0.16"
 petgraph = "0.4"
+fnv = "1"

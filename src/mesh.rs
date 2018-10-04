@@ -7,6 +7,7 @@ use std::io;
 use std::vec::Vec;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use fnv::FnvHashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
 use util::*;
@@ -96,7 +97,8 @@ pub struct Mesh {
     pub face_count: usize,
     pub halfedges: Vec<Halfedge>,
     pub halfedge_count: usize,
-    pub edges: HashMap<EdgeEndpoints, Id>
+    //pub edges: HashMap<EdgeEndpoints, Id>
+    pub edges: FnvHashMap<EdgeEndpoints, Id>
 }
 
 impl Mesh {
@@ -108,7 +110,8 @@ impl Mesh {
             face_count: 0,
             halfedges: Vec::new(),
             halfedge_count: 0,
-            edges: HashMap::new()
+            //edges: HashMap::new()
+            edges: FnvHashMap::default()
         }
     }
 

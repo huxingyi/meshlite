@@ -1,4 +1,5 @@
 extern crate cgmath;
+extern crate fnv;
 extern crate petgraph;
 
 pub mod bmesh;
