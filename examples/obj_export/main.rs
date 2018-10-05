@@ -2,47 +2,36 @@ extern crate cgmath;
 extern crate meshlite;
 extern crate petgraph;
 
-use meshlite::mesh;
-use meshlite::subdivide;
-use meshlite::iterator;
-use meshlite::util;
-use meshlite::wrap;
-use meshlite::bmesh;
-use meshlite::triangulate;
-use meshlite::wavefront;
-use meshlite::debug;
-
-use cgmath::Matrix4;
-use cgmath::prelude::*;
-use cgmath::Vector3;
-use cgmath::Point3;
-use cgmath::Deg;
-use cgmath::Rad;
-
-use wrap::GiftWrapper;
-use subdivide::CatmullClarkSubdivider;
-use triangulate::Triangulate;
-use subdivide::Subdivide;
-
-use mesh::Mesh;
 use bmesh::Bmesh;
-
+//use cgmath::Deg;
+//use cgmath::Matrix4;
+use cgmath::Point3;
+//use cgmath::Rad;
+//use cgmath::Vector3;
+//use cgmath::prelude::*;
 use mesh::Export;
-use mesh::Import;
+//use mesh::Import;
+//use mesh::Mesh;
+use meshlite::bmesh;
+//use meshlite::debug;
+//use meshlite::iterator;
+use meshlite::mesh;
+//use meshlite::primitives;
+//use meshlite::subdivide;
+//use meshlite::triangulate;
+//use meshlite::util;
+//use meshlite::wavefront;
+//use meshlite::wrap;
+//use subdivide::CatmullClarkSubdivider;
+//use subdivide::Subdivide;
+//use triangulate::Triangulate;
+//use wrap::GiftWrapper;
 
-fn cube() -> Mesh {
-    let mut m = Mesh::new();
-    let face_id = m.add_plane(1.0, 1.0);
-    let normal = m.face_norm(face_id);
-    m.extrude_face(face_id, normal, 1.0).translate(0.0, 0.0, -0.5);
-    m
-}
-
-fn plane() -> Mesh {
-    let mut m = Mesh::new();
-    let face_id = m.add_plane(1.0, 1.0);
-    m
-}
+//fn plane() -> Mesh {
+//    let mut m = Mesh::new();
+//    let face_id = m.add_plane(1.0, 1.0);
+//    m
+//}
 
 fn main() {
     //let mut m = Mesh::new();
@@ -189,7 +178,7 @@ fn main() {
     bmesh.add_edge(node1, node0);
     bmesh.add_edge(node2, node0);
     bmesh.add_edge(node3, node0);
-    let mut mesh = bmesh.generate_mesh();
+    let mesh = bmesh.generate_mesh();
     mesh.export("test.obj").expect("save file failed");
 }
 

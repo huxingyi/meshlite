@@ -1,6 +1,6 @@
 extern crate meshlite;
 
-use meshlite::mesh::Mesh;
+use meshlite::primitives::cube;
 use meshlite::subdivide::Subdivide;
 use std::time::{Duration, Instant};
 use std::vec::Vec;
@@ -47,11 +47,3 @@ fn to_seconds_f64(d: &Duration) -> f64 {
     d.as_secs() as f64 + d.subsec_nanos() as f64 * 1e-9
 }
 
-fn cube() -> Mesh {
-    let mut m = Mesh::new();
-    let face_id = m.add_plane(1.0, 1.0);
-    let normal = m.face_norm(face_id);
-    m.extrude_face(face_id, normal, 1.0)
-        .translate(0.0, 0.0, -0.5);
-    m
-}
