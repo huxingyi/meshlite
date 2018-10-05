@@ -7,9 +7,11 @@ use std::io;
 use std::vec::Vec;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use fnv::FnvHashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
 use util::*;
+use smallvec::SmallVec;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::f32;
@@ -96,7 +98,7 @@ pub struct Mesh {
     pub face_count: usize,
     pub halfedges: Vec<Halfedge>,
     pub halfedge_count: usize,
-    pub edges: HashMap<EdgeEndpoints, Id>
+    pub edges: FnvHashMap<EdgeEndpoints, Id>
 }
 
 impl Mesh {
@@ -108,7 +110,7 @@ impl Mesh {
             face_count: 0,
             halfedges: Vec::new(),
             halfedge_count: 0,
-            edges: HashMap::new()
+            edges: FnvHashMap::default()
         }
     }
 
@@ -155,9 +157,8 @@ impl Mesh {
 
     pub fn face_center(&self, id: Id) -> Point3<f32> {
         let face = self.face(id).unwrap();
-        let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
-        let mut points = Vec::new();
-        while let Some(halfedge_id) = face_halfedge_iter.next() {
+        let mut points = SmallVec::<[Point3<f32>; 4]>::new();
+        for halfedge_id in FaceHalfedgeIterator::new(self, face.halfedge) {
             let halfedge = self.halfedge(halfedge_id).unwrap();
             let vertex = self.vertex(halfedge.vertex).unwrap();
             points.push(vertex.position);

@@ -1,6 +1,6 @@
 use cgmath::Point3;
 use cgmath::EuclideanSpace;
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 use mesh::Mesh;
 use mesh::Id;
 use iterator::FaceIterator;
@@ -49,9 +49,9 @@ impl VertexData {
 
 pub struct CatmullClarkSubdivider<'a> {
     mesh: &'a Mesh,
-    face_data_set: HashMap<Id, Box<FaceData>>,
-    edge_data_set: HashMap<Id, Box<EdgeData>>,
-    vertex_data_set: HashMap<Id, Box<VertexData>>,
+    face_data_set: FnvHashMap<Id, FaceData>,
+    edge_data_set: FnvHashMap<Id, EdgeData>,
+    vertex_data_set: FnvHashMap<Id, VertexData>,
     generated_mesh: Mesh,
     finished: bool,
 }
@@ -60,9 +60,9 @@ impl<'a> CatmullClarkSubdivider<'a> {
     pub fn new(mesh: &'a Mesh) -> Self {
         CatmullClarkSubdivider {
             mesh: mesh,
-            face_data_set: HashMap::new(),
-            edge_data_set: HashMap::new(),
-            vertex_data_set: HashMap::new(),
+            face_data_set: FnvHashMap::default(),
+            edge_data_set: FnvHashMap::default(),
+            vertex_data_set: FnvHashMap::default(),
             generated_mesh: Mesh::new(),
             finished: false,
         }
@@ -75,7 +75,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
             let mut data = FaceData::new();
             data.average_of_points = center;
             data.generated_vertex_id = internal_borrow.add_vertex(center);
-            Box::new(data)
+            data
         })
     }
 
@@ -91,7 +91,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
         let stop_vertex_position = self.mesh.vertex(next_halfedge_vertex_id).unwrap().position;
         let f1_data_average = self.face_data_mut(halfedge_face_id).average_of_points;
         let f2_data_average = self.face_data_mut(opposite_face_id).average_of_points;
-        let array = vec![
+        let array = &[
            f1_data_average,
            f2_data_average,
            start_vertex_position,
@@ -101,9 +101,9 @@ impl<'a> CatmullClarkSubdivider<'a> {
         self.edge_data_set.entry(id).or_insert_with(|| {
             let mut data = EdgeData::new();
             data.mid_point = mid_point;
-            let center = Point3::centroid(&array);
+            let center = Point3::centroid(array);
             data.generated_vertex_id = internal_borrow.add_vertex(center);
-            Box::new(data)
+            data
         })
     }
 
@@ -137,17 +137,34 @@ impl<'a> CatmullClarkSubdivider<'a> {
         self.vertex_data_set.entry(id).or_insert_with(|| {
             let mut data = VertexData::new();
             data.generated_vertex_id = internal_borrow.add_vertex(position);
-            Box::new(data)
+            data
         })
     }
 
     pub fn generate(&mut self) -> Mesh {
         mem::replace(&mut self.generated_mesh_mut(), Mesh::new())
     }
-
+    
     fn generated_mesh_mut(&mut self) ->&mut Mesh {
         if self.finished {
             return &mut self.generated_mesh;
+        }
+        {
+            // Each halfedge produce 3 new
+            let halfedge_prediction = self.mesh.halfedge_count * 4;
+            self.generated_mesh.halfedges.reserve(halfedge_prediction);
+            self.generated_mesh.vertices.reserve(
+                self.mesh.vertex_count         // No vertices are removed
+                + self.mesh.halfedge_count / 2 // Each edge produce a new point
+                + self.mesh.face_count         // Each face produce a new point
+            );
+            self.generated_mesh.faces.reserve(
+                self.mesh.face_count * 4       // Optimized for quad meshes
+            );
+            // Is this true for all meshes? If false, this is probably still ok
+            // since the worst-case here is degraded performance or 
+            // overallocation.
+            self.generated_mesh.edges.reserve(halfedge_prediction / 2);
         }
         let face_id_vec = FaceIterator::new(self.mesh).into_vec();
         for face_id in face_id_vec {
