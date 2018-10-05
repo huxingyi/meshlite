@@ -1,6 +1,5 @@
 use cgmath::Point3;
 use cgmath::EuclideanSpace;
-//use std::collections::HashMap;
 use fnv::FnvHashMap;
 use mesh::Mesh;
 use mesh::Id;

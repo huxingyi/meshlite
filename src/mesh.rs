@@ -98,7 +98,6 @@ pub struct Mesh {
     pub face_count: usize,
     pub halfedges: Vec<Halfedge>,
     pub halfedge_count: usize,
-    //pub edges: HashMap<EdgeEndpoints, Id>
     pub edges: FnvHashMap<EdgeEndpoints, Id>
 }
 
@@ -111,7 +110,6 @@ impl Mesh {
             face_count: 0,
             halfedges: Vec::new(),
             halfedge_count: 0,
-            //edges: HashMap::new()
             edges: FnvHashMap::default()
         }
     }
