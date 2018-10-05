@@ -3,6 +3,10 @@ name = "meshlite"
 version = "0.2.0"
 authors = ["Xingyi HU <huxingyi@msn.com>"]
 
+# Uncomment when using the profiler script
+# [profile.release]
+# debug = true
+
 [lib]
 name = "meshlite"
 crate-type = ["lib"]
@@ -11,3 +15,4 @@ crate-type = ["lib"]
 cgmath = "0.16"
 petgraph = "0.4"
 fnv = "1"
+smallvec = "0.6"

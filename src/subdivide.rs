@@ -98,7 +98,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
         let stop_vertex_position = self.mesh.vertex(next_halfedge_vertex_id).unwrap().position;
         let f1_data_average = self.face_data_mut(halfedge_face_id).average_of_points;
         let f2_data_average = self.face_data_mut(opposite_face_id).average_of_points;
-        let array = vec![
+        let array = &[
            f1_data_average,
            f2_data_average,
            start_vertex_position,
@@ -108,7 +108,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
         self.edge_data_set.entry(id).or_insert_with(|| {
             let mut data = EdgeData::new();
             data.mid_point = mid_point;
-            let center = Point3::centroid(&array);
+            let center = Point3::centroid(array);
             data.generated_vertex_id = internal_borrow.add_vertex(center);
             Box::new(data)
         })

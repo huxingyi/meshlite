@@ -1,6 +1,7 @@
 extern crate cgmath;
 extern crate fnv;
 extern crate petgraph;
+extern crate smallvec;
 
 pub mod bmesh;
 pub mod debug;

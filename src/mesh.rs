@@ -11,6 +11,7 @@ use fnv::FnvHashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
 use util::*;
+use smallvec::SmallVec;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::f32;
@@ -158,9 +159,8 @@ impl Mesh {
 
     pub fn face_center(&self, id: Id) -> Point3<f32> {
         let face = self.face(id).unwrap();
-        let mut face_halfedge_iter = FaceHalfedgeIterator::new(self, face.halfedge);
-        let mut points = Vec::new();
-        while let Some(halfedge_id) = face_halfedge_iter.next() {
+        let mut points = SmallVec::<[Point3<f32>; 4]>::new();
+        for halfedge_id in FaceHalfedgeIterator::new(self, face.halfedge) {
             let halfedge = self.halfedge(halfedge_id).unwrap();
             let vertex = self.vertex(halfedge.vertex).unwrap();
             points.push(vertex.position);
