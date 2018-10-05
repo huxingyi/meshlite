@@ -8,22 +8,29 @@ use std::vec::Vec;
 fn main() {
     let mut mesh = cube();
     let mut all_vps = Vec::new(); // Vertices Per Second
+    println!(concat!(
+        "faces     | ",
+        "vertices  | ",
+        "halfedges | ",
+        "edges     | ",
+        "verts/s   | ",
+        "time (ms)"
+    ));
+    println!("----------+-----------+-----------+-----------+-----------+-----------");
     for _ in 0..9 {
         let now = Instant::now();
         let verts_before = mesh.vertex_count;
         mesh = mesh.subdivide();
-        let verts_after = mesh.vertex_count;
-        let added_verts = verts_after - verts_before;
+        let added_verts = mesh.vertex_count - verts_before;
         let seconds = to_seconds_f64(&now.elapsed());
         let verts_per_second = (added_verts as f64 / seconds).round();
         all_vps.push(verts_per_second);
         println!(
-            concat!(
-                "subdivided to {:#?} faces, {} vertices, ",
-                "{} vertices/second, time {:.2} ms"
-            ),
+            "{: <9} | {: <9} | {: <9} | {: <9} | {: <9} | {: <9.2}",
             mesh.face_count,
-            verts_after,
+            mesh.vertex_count,
+            mesh.halfedge_count,
+            mesh.edges.len(),
             verts_per_second,
             seconds * 1000.0
         );
