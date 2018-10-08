@@ -166,8 +166,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
             // overallocation.
             self.generated_mesh.edges.reserve(halfedge_prediction / 2);
         }
-        let face_id_vec = FaceIterator::new(self.mesh).into_vec();
-        for face_id in face_id_vec {
+        for face_id in FaceIterator::new(self.mesh) {
             let face_vertex_id = self.face_data_mut(face_id).generated_vertex_id;
             let face_halfedge = self.mesh.face(face_id).unwrap().halfedge;
             let face_halfedge_id_vec = FaceHalfedgeIterator::new(self.mesh, face_halfedge).into_vec();
@@ -182,11 +181,12 @@ impl<'a> CatmullClarkSubdivider<'a> {
                 let e2_vertex_id = self.edge_data_mut(next_halfedge_id).generated_vertex_id;
                 let vertex_generated_id = self.vertex_data_mut(vertex_id).generated_vertex_id;
                 let added_face_id = self.generated_mesh.add_face();
-                let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
-                added_halfedges.push((self.generated_mesh.add_halfedge(), face_vertex_id));
-                added_halfedges.push((self.generated_mesh.add_halfedge(), e1_vertex_id));
-                added_halfedges.push((self.generated_mesh.add_halfedge(), vertex_generated_id));
-                added_halfedges.push((self.generated_mesh.add_halfedge(), e2_vertex_id));
+                let mut added_halfedges = [
+                    (self.generated_mesh.add_halfedge(), face_vertex_id),
+                    (self.generated_mesh.add_halfedge(), e1_vertex_id),
+                    (self.generated_mesh.add_halfedge(), vertex_generated_id),
+                    (self.generated_mesh.add_halfedge(), e2_vertex_id)
+                ];
                 for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
                     self.generated_mesh.vertex_mut(added_vertex_id).unwrap().halfedges.insert(added_halfedge_id);
                     self.generated_mesh.halfedge_mut(added_halfedge_id).unwrap().face = added_face_id;
