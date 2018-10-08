@@ -11,11 +11,11 @@ impl<'a> Iterator for FaceIterator<'a> {
 
     fn next(&mut self) -> Option<Id> {
         while self.index < self.mesh.faces.len() {
-            if self.mesh.faces[self.index].alive {
-                self.index += 1;
-                return Some(self.mesh.faces[self.index - 1].id);
-            }
+            let face = &self.mesh.faces[self.index];
             self.index += 1;
+            if face.alive {
+                return Some(face.id)
+            }
         }
         None
     }
