@@ -84,12 +84,12 @@ pub struct CatmullClarkSubdivider<'a> {
 impl<'a> CatmullClarkSubdivider<'a> {
     pub fn new(mesh: &'a Mesh) -> Self {
         CatmullClarkSubdivider {
-            edge_data_set: FnvHashMap::default(),   // TODO: Preallocate! :)
-            face_data_set: FnvHashMap::default(),   // TODO: Preallocate! :)
+            edge_data_set: FnvHashMap::default(),
+            face_data_set: FnvHashMap::default(),
             finished: false,
             generated_mesh: Mesh::new(),
             mesh: mesh,
-            vertex_data_set: FnvHashMap::default(), // TODO: Preallocate! :)
+            vertex_data_set: FnvHashMap::default(),
         }
     }
 
@@ -170,28 +170,34 @@ impl<'a> CatmullClarkSubdivider<'a> {
     pub fn generate(&mut self) -> Mesh {
         mem::replace(&mut self.generated_mesh_mut(), Mesh::new())
     }
+
+    /// Should be called once, internally, at subdivision start.
+    fn reserve_internal_memory(&mut self) {
+        // Each halfedge produce 3 new
+        let halfedge_prediction = self.mesh.halfedge_count * 4;
+        self.generated_mesh.halfedges.reserve(halfedge_prediction);
+        self.generated_mesh.vertices.reserve(
+            self.mesh.vertex_count         // No vertices are removed
+            + self.mesh.halfedge_count / 2 // Each edge produce a new point
+            + self.mesh.face_count         // Each face produce a new point
+        );
+        self.generated_mesh.faces.reserve(
+            self.mesh.face_count * 4       // Optimized for quad meshes
+        );
+        // Is this true for all meshes? If false, this is probably still ok
+        // since the worst-case here is degraded performance or 
+        // overallocation.
+        self.generated_mesh.edges.reserve(halfedge_prediction / 2);
+        self.face_data_set.reserve(self.mesh.face_count);
+        self.edge_data_set.reserve(self.mesh.edges.len());
+        self.vertex_data_set.reserve(self.mesh.vertex_count);
+    }
     
     fn generated_mesh_mut(&mut self) ->&mut Mesh {
         if self.finished {
             return &mut self.generated_mesh;
         }
-        {
-            // Each halfedge produce 3 new
-            let halfedge_prediction = self.mesh.halfedge_count * 4;
-            self.generated_mesh.halfedges.reserve(halfedge_prediction);
-            self.generated_mesh.vertices.reserve(
-                self.mesh.vertex_count         // No vertices are removed
-                + self.mesh.halfedge_count / 2 // Each edge produce a new point
-                + self.mesh.face_count         // Each face produce a new point
-            );
-            self.generated_mesh.faces.reserve(
-                self.mesh.face_count * 4       // Optimized for quad meshes
-            );
-            // Is this true for all meshes? If false, this is probably still ok
-            // since the worst-case here is degraded performance or 
-            // overallocation.
-            self.generated_mesh.edges.reserve(halfedge_prediction / 2);
-        }
+        self.reserve_internal_memory();
         // Temporary and reusable memory buffers for self.vertex_data_mut().
         let mut tmp_avg_of_faces: Vec<Point3<f32>> = Vec::new();
         let mut tmp_avg_of_edge_mids: Vec<Point3<f32>> = Vec::new();
