@@ -158,7 +158,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
         // TODO: Try to replace this with Vec or some other efficient lookup.
         output.edges.reserve(halfedge_prediction / 2);
 
-        // input.rs is using 1-based indexing so we need + 1 for the length of
+        // mesh.rs is using 1-based indexing so we need + 1 for the length of
         // each Vec below. It is also not enough to use input.halfedge_count,
         // the count represents "living" elements and may be less than the
         // largest id (index).
