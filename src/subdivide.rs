@@ -149,11 +149,11 @@ impl<'a> CatmullClarkSubdivider<'a> {
         );
 
         // Is this prediction true for all meshes? If false, this is probably
-        // still ok since the worst-case here is degraded performance or
+        // still ok since the worst-case here is degraded performance and
         // overallocation.
         //
         // Insertion in this collection is at the time of writing the single
-        // largest time consumer that sticks out when profiling subdivision.
+        // largest time sink that sticks out when profiling subdivision.
         //
         // TODO: Try to replace this with Vec or some other efficient lookup.
         output.edges.reserve(halfedge_prediction / 2);
