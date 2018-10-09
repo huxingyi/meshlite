@@ -1,11 +1,13 @@
 use cgmath::EuclideanSpace;
 use cgmath::Point3;
-use fnv::FnvHashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
 use mesh::Id;
 use mesh::Mesh;
 
+/// Derives Clone to allow initializing a vec with the vec![value; length]
+/// macro.
+#[derive(Clone)]
 struct FaceData {
     /// The center point of the original face in the input mesh.
     average_of_points: Point3<f32>,
@@ -37,27 +39,27 @@ impl VertexData {
     }
 }
 
-/// Allows efficient usage of the hash map entry API by splitting
-/// CatmullClarkSubdivider::Self into multiple borrows.
 fn face_data_mut<'a>(
     input: &Mesh,
     id: Id,
-    face_data_set: &'a mut FnvHashMap<Id, FaceData>,
+    face_data_set: &'a mut Vec<Option<FaceData>>,
     output: &mut Mesh,
 ) -> &'a mut FaceData {
-    face_data_set.entry(id).or_insert_with(|| {
-        let average_of_points = input.face_center(id);
-        FaceData {
-            average_of_points,
-            generated_vertex_id: output.add_vertex(average_of_points),
-        }
-    })
+    if face_data_set[id].is_some() {
+        return face_data_set[id].as_mut().unwrap();
+    }
+    let average_of_points = input.face_center(id);
+    face_data_set[id] = Some(FaceData {
+        average_of_points,
+        generated_vertex_id: output.add_vertex(average_of_points),
+    });
+    face_data_set[id].as_mut().unwrap()
 }
 
 fn edge_data_mut<'a>(
     input: &Mesh,
     id: Id,
-    face_data_set: &mut FnvHashMap<Id, FaceData>,
+    face_data_set: &mut Vec<Option<FaceData>>,
     edge_data_set: &'a mut Vec<Option<EdgeData>>,
     output: &mut Mesh,
 ) -> &'a mut EdgeData {
@@ -107,7 +109,7 @@ pub struct CatmullClarkSubdivider<'a> {
     edge_data_set: Vec<Option<EdgeData>>,
 
     /// Maps FACE ID in the INPUT mesh to FaceData.
-    face_data_set: FnvHashMap<Id, FaceData>,
+    face_data_set: Vec<Option<FaceData>>,
 
     /// Destination mesh
     output: Mesh,
@@ -129,7 +131,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
     pub fn new(input: &'a Mesh) -> Self {
         CatmullClarkSubdivider {
             edge_data_set: Vec::new(),
-            face_data_set: FnvHashMap::default(),
+            face_data_set: Vec::new(),
             output: Mesh::new(),
             input,
             tmp_avg_of_edge_mids: Vec::new(),
@@ -219,16 +221,15 @@ impl<'a> CatmullClarkSubdivider<'a> {
         // overallocation.
         self.output.edges.reserve(halfedge_prediction / 2);
 
-        self.face_data_set.reserve(self.input.faces.len() + 1);
-
         // input.rs is using 1-based indexing so we need + 1 for the length of
-        // each Vector below. It is also not enough to use input.halfedge_count,
+        // each Vec below. It is also not enough to use input.halfedge_count,
         // the count represents "living" elements and may be less than the
         // largest id (index).
         //
-        // Using Vectors here may consume more memory than hash maps when the
-        // source mesh has been heavily edited with many deletions, but should
-        // be faster.
+        // Using Vecs here may consume more memory compared to hash maps when
+        // the source mesh has been heavily edited with many deletions, but
+        // should be faster in most cases.
+        self.face_data_set = vec![None; self.input.faces.len() + 1];
         self.edge_data_set = vec![None; self.input.halfedges.len() + 1];
         self.vertex_data_set = vec![None; self.input.vertices.len() + 1];
     }
