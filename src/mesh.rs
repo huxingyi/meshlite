@@ -7,6 +7,7 @@ use std::io;
 use std::vec::Vec;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use fnv::FnvHashSet;
 use fnv::FnvHashMap;
 use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
@@ -22,7 +23,7 @@ pub type Id = usize;
 pub struct Vertex {
     pub id: Id,
     pub position: Point3<f32>,
-    pub halfedges: HashSet<Id>,
+    pub halfedges: FnvHashSet<Id>,
     pub prev: Id,
     pub next: Id,
     pub alive: bool,
@@ -383,7 +384,7 @@ impl Mesh {
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
-            halfedges: HashSet::new(),
+            halfedges: FnvHashSet::default(),
             prev: 0,
             next: 0,
             position : position,
@@ -451,7 +452,7 @@ impl Mesh {
         }
         let (&first_id, _) = linked_vertices.iter().next().unwrap();
         let mut vert = first_id;
-        let mut visited_sets = HashSet::new();
+        let mut visited_sets = FnvHashSet::default();
         let mut added_vertices = Vec::new();
         added_vertices.push(first_id);
         visited_sets.insert(first_id);
