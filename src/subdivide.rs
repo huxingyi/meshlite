@@ -5,7 +5,6 @@ use iterator::FaceHalfedgeIterator;
 use iterator::FaceIterator;
 use mesh::Id;
 use mesh::Mesh;
-use std::mem;
 
 struct FaceData {
     /// The center point of the original face in the input mesh.
@@ -18,15 +17,6 @@ struct FaceData {
 struct EdgeData {
     mid_point: Point3<f32>,
     generated_vertex_id: Id,
-}
-
-impl EdgeData {
-    pub fn new() -> Self {
-        EdgeData {
-            mid_point: Point3::new(0.0, 0.0, 0.0),
-            generated_vertex_id: 0,
-        }
-    }
 }
 
 struct VertexData {
@@ -77,27 +67,16 @@ fn vertex_data_mut<'a>(
         for halfedge_id in vertex.halfedges.iter() {
             let halfedge_face_id = input.halfedge(*halfedge_id).unwrap().face;
             tmp_avg_of_faces.push(
-                face_data_mut(
-                    input,
-                    halfedge_face_id,
-                    face_data_set,
-                    output,
-                ).average_of_points,
+                face_data_mut(input, halfedge_face_id, face_data_set, output).average_of_points,
             );
             tmp_avg_of_edge_mids.push(
-                edge_data_mut(
-                    input,
-                    *halfedge_id,
-                    face_data_set,
-                    edge_data_set,
-                    output
-                ).mid_point
+                edge_data_mut(input, *halfedge_id, face_data_set, edge_data_set, output).mid_point,
             );
         }
         let bury_center = Point3::centroid(tmp_avg_of_faces);
         let average_of_edge = Point3::centroid(tmp_avg_of_edge_mids);
         let position = (((average_of_edge * 2.0) + bury_center.to_vec())
-                        + (vertex.position.to_vec() * ((tmp_avg_of_faces.len() as i32 - 3).abs() as f32)))
+            + (vertex.position.to_vec() * ((tmp_avg_of_faces.len() as i32 - 3).abs() as f32)))
             / (tmp_avg_of_faces.len() as f32);
         let mut data = VertexData::new();
         data.generated_vertex_id = output.add_vertex(position);
@@ -115,12 +94,7 @@ fn edge_data_mut<'a>(
     let id = input.peek_same_halfedge(id);
     edge_data_set.entry(id).or_insert_with(|| {
         let mid_point = input.edge_center(id);
-        let (
-            halfedge_face_id,
-            opposite_face_id,
-            next_halfedge_vertex_id,
-            start_vertex_position,
-        ) = {
+        let (halfedge_face_id, opposite_face_id, next_halfedge_vertex_id, start_vertex_position) = {
             let halfedge = input.halfedge(id).unwrap();
             (
                 halfedge.face,
@@ -131,21 +105,19 @@ fn edge_data_mut<'a>(
         };
         let stop_vertex_position = input.vertex(next_halfedge_vertex_id).unwrap().position;
         let f1_data_average =
-            face_data_mut(input, halfedge_face_id, face_data_set, output)
-                .average_of_points;
+            face_data_mut(input, halfedge_face_id, face_data_set, output).average_of_points;
         let f2_data_average =
-            face_data_mut(input, opposite_face_id, face_data_set, output)
-                .average_of_points;
-        let mut data = EdgeData::new();
-        data.mid_point = mid_point;
+            face_data_mut(input, opposite_face_id, face_data_set, output).average_of_points;
         let center = Point3::centroid(&[
             f1_data_average,
             f2_data_average,
             start_vertex_position,
             stop_vertex_position,
         ]);
-        data.generated_vertex_id = output.add_vertex(center);
-        data
+        EdgeData {
+            mid_point,
+            generated_vertex_id: output.add_vertex(center),
+        }
     })
 }
 
@@ -158,15 +130,17 @@ pub struct CatmullClarkSubdivider<'a> {
     /// Maps FACE ID in the INPUT mesh to FaceData.
     face_data_set: FnvHashMap<Id, FaceData>,
 
-    /// TODO: Investigate if this is needed or if this struct should be consumed
-    ///       by .generate() instead.
-    finished: bool,
-
     /// Destination mesh
     generated_mesh: Mesh,
 
     /// Source mesh
     mesh: &'a Mesh,
+
+    // Temporary and reusable memory buffer for vertex_data_mut().
+    tmp_avg_of_faces: Vec<Point3<f32>>,
+
+    // Temporary and reusable memory buffer for vertex_data_mut().
+    tmp_avg_of_edge_mids: Vec<Point3<f32>>,
 
     /// Temporary buffer, TODO: Describe purpose.
     vertex_data_set: FnvHashMap<Id, VertexData>,
@@ -177,59 +151,16 @@ impl<'a> CatmullClarkSubdivider<'a> {
         CatmullClarkSubdivider {
             edge_data_set: FnvHashMap::default(),
             face_data_set: FnvHashMap::default(),
-            finished: false,
             generated_mesh: Mesh::new(),
             mesh: mesh,
+            tmp_avg_of_edge_mids: Vec::new(),
+            tmp_avg_of_faces: Vec::new(),
             vertex_data_set: FnvHashMap::default(),
         }
     }
 
-    pub fn generate(&mut self) -> Mesh {
-        mem::replace(&mut self.generated_mesh_mut(), Mesh::new())
-    }
-
-    /// Should be called once, internally, at subdivision start.
-    fn reserve_internal_memory(&mut self) {
-        // Each halfedge produce 3 new
-        let halfedge_prediction = self.mesh.halfedge_count * 4;
-        self.generated_mesh.halfedges.reserve(halfedge_prediction);
-        self.generated_mesh.vertices.reserve(
-            self.mesh.vertex_count         // No vertices are removed
-            + self.mesh.halfedge_count / 2 // Each edge produce a new point
-            + self.mesh.face_count, // Each face produce a new point
-        );
-        self.generated_mesh.faces.reserve(
-            self.mesh.face_count * 4, // Optimized for quad meshes
-        );
-        // Is this true for all meshes? If false, this is probably still ok
-        // since the worst-case here is degraded performance or
-        // overallocation.
-        self.generated_mesh.edges.reserve(halfedge_prediction / 2);
-        self.face_data_set.reserve(self.mesh.face_count);
-        self.edge_data_set.reserve(self.mesh.edges.len());
-        self.vertex_data_set.reserve(self.mesh.vertex_count);
-    }
-
-    /// Helps to reduce the syntax noise when a Self is available. Splits Self
-    /// into multiple mutable borrows.
-    fn edge_data_mut(&mut self, halfedge_id: Id) -> &EdgeData {
-        edge_data_mut(
-            &self.mesh,
-            halfedge_id,
-            &mut self.face_data_set,
-            &mut self.edge_data_set,
-            &mut self.generated_mesh
-        )
-    }
-
-    fn generated_mesh_mut(&mut self) -> &mut Mesh {
-        if self.finished {
-            return &mut self.generated_mesh;
-        }
+    pub fn generate(mut self) -> Mesh {
         self.reserve_internal_memory();
-        // Temporary and reusable memory buffers for self.vertex_data_mut().
-        let mut tmp_avg_of_faces: Vec<Point3<f32>> = Vec::new();
-        let mut tmp_avg_of_edge_mids: Vec<Point3<f32>> = Vec::new();
         for face_id in FaceIterator::new(self.mesh) {
             let face_vertex_id = face_data_mut(
                 &self.mesh,
@@ -249,17 +180,7 @@ impl<'a> CatmullClarkSubdivider<'a> {
                 };
                 let e1_vertex_id = self.edge_data_mut(halfedge_id).generated_vertex_id;
                 let e2_vertex_id = self.edge_data_mut(next_halfedge_id).generated_vertex_id;
-                let vertex_generated_id =
-                    vertex_data_mut(
-                        &self.mesh,
-                        vertex_id,
-                        &mut tmp_avg_of_faces,
-                        &mut tmp_avg_of_edge_mids,
-                        &mut self.face_data_set,
-                        &mut self.vertex_data_set,
-                        &mut self.edge_data_set,
-                        &mut self.generated_mesh
-                    ).generated_vertex_id;
+                let vertex_generated_id = self.vertex_data_mut(vertex_id).generated_vertex_id;
                 let added_face_id = self.generated_mesh.add_face();
                 let mut added_halfedges = [
                     (self.generated_mesh.add_halfedge(), face_vertex_id),
@@ -293,8 +214,56 @@ impl<'a> CatmullClarkSubdivider<'a> {
                 }
             }
         }
-        self.finished = true;
-        &mut self.generated_mesh
+        self.generated_mesh
+    }
+
+    /// Should be called once, internally, at subdivision start.
+    fn reserve_internal_memory(&mut self) {
+        // Each halfedge produce 3 new
+        let halfedge_prediction = self.mesh.halfedge_count * 4;
+        self.generated_mesh.halfedges.reserve(halfedge_prediction);
+        self.generated_mesh.vertices.reserve(
+            self.mesh.vertex_count         // No vertices are removed
+            + self.mesh.halfedge_count / 2 // Each edge produce a new point
+            + self.mesh.face_count,        // Each face produce a new point
+        );
+        self.generated_mesh.faces.reserve(
+            self.mesh.face_count * 4,      // Optimize for quads
+        );
+        // Is this true for all meshes? If false, this is probably still ok
+        // since the worst-case here is degraded performance or
+        // overallocation.
+        self.generated_mesh.edges.reserve(halfedge_prediction / 2);
+        self.face_data_set.reserve(self.mesh.face_count);
+        self.edge_data_set.reserve(self.mesh.edges.len());
+        self.vertex_data_set.reserve(self.mesh.vertex_count);
+    }
+
+    /// Helps to reduce the syntax noise when a Self is available. Splits Self
+    /// into multiple mutable borrows.
+    fn edge_data_mut(&mut self, halfedge_id: Id) -> &EdgeData {
+        edge_data_mut(
+            &self.mesh,
+            halfedge_id,
+            &mut self.face_data_set,
+            &mut self.edge_data_set,
+            &mut self.generated_mesh,
+        )
+    }
+
+    /// Helps to reduce the syntax noise when a Self is available. Splits Self
+    /// into multiple mutable borrows.
+    fn vertex_data_mut(&mut self, vertex_id: Id) -> &VertexData {
+        vertex_data_mut(
+            &self.mesh,
+            vertex_id,
+            &mut self.tmp_avg_of_faces,
+            &mut self.tmp_avg_of_edge_mids,
+            &mut self.face_data_set,
+            &mut self.vertex_data_set,
+            &mut self.edge_data_set,
+            &mut self.generated_mesh,
+        )
     }
 }
 
@@ -304,7 +273,6 @@ pub trait Subdivide {
 
 impl Subdivide for Mesh {
     fn subdivide(&self) -> Self {
-        let mut cc = CatmullClarkSubdivider::new(self);
-        cc.generate()
+        CatmullClarkSubdivider::new(self).generate()
     }
 }
