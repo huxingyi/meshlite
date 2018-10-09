@@ -14,6 +14,9 @@ struct FaceData {
     generated_vertex_id: Id,
 }
 
+/// Derives Clone to allow initializing a vec with the vec![value; length]
+/// macro.
+#[derive(Clone)]
 struct EdgeData {
     mid_point: Point3<f32>,
     generated_vertex_id: Id,
@@ -55,52 +58,53 @@ fn edge_data_mut<'a>(
     input: &Mesh,
     id: Id,
     face_data_set: &mut FnvHashMap<Id, FaceData>,
-    edge_data_set: &'a mut FnvHashMap<Id, EdgeData>,
+    edge_data_set: &'a mut Vec<Option<EdgeData>>,
     output: &mut Mesh,
 ) -> &'a mut EdgeData {
     let id = input.peek_same_halfedge(id);
-    edge_data_set.entry(id).or_insert_with(|| {
-        let mid_point = input.edge_center(id);
-        let (
-            halfedge_face_id,
-            opposite_face_id,
-            next_halfedge_vertex_id,
-            start_vertex_position,
-        ) = {
-            let halfedge = input.halfedge(id).unwrap();
-            (
-                halfedge.face,
-                input.halfedge(halfedge.opposite).unwrap().face,
-                input.halfedge(halfedge.next).unwrap().vertex,
-                input.vertex(halfedge.vertex).unwrap().position,
-            )
-        };
-        let stop_vertex_position =
-            input.vertex(next_halfedge_vertex_id).unwrap().position;
-        let f1_data_average =
-            face_data_mut(input, halfedge_face_id, face_data_set, output)
-                .average_of_points;
-        let f2_data_average =
-            face_data_mut(input, opposite_face_id, face_data_set, output)
-                .average_of_points;
-        let center = Point3::centroid(&[
-            f1_data_average,
-            f2_data_average,
-            start_vertex_position,
-            stop_vertex_position,
-        ]);
-        EdgeData {
-            mid_point,
-            generated_vertex_id: output.add_vertex(center),
-        }
-    })
+    if edge_data_set[id].is_some() {
+        return edge_data_set[id].as_mut().unwrap();
+    }
+    let mid_point = input.edge_center(id);
+    let (
+        halfedge_face_id,
+        opposite_face_id,
+        next_halfedge_vertex_id,
+        start_vertex_position,
+    ) = {
+        let halfedge = input.halfedge(id).unwrap();
+        (
+            halfedge.face,
+            input.halfedge(halfedge.opposite).unwrap().face,
+            input.halfedge(halfedge.next).unwrap().vertex,
+            input.vertex(halfedge.vertex).unwrap().position,
+        )
+    };
+    let stop_vertex_position =
+        input.vertex(next_halfedge_vertex_id).unwrap().position;
+    let f1_data_average =
+        face_data_mut(input, halfedge_face_id, face_data_set, output)
+            .average_of_points;
+    let f2_data_average =
+        face_data_mut(input, opposite_face_id, face_data_set, output)
+            .average_of_points;
+    let center = Point3::centroid(&[
+        f1_data_average,
+        f2_data_average,
+        start_vertex_position,
+        stop_vertex_position,
+    ]);
+    edge_data_set[id] = Some(EdgeData {
+        mid_point,
+        generated_vertex_id: output.add_vertex(center),
+    });
+    edge_data_set[id].as_mut().unwrap()
 }
 
 /// A context for subdivision, providing temporary memory buffers.
 pub struct CatmullClarkSubdivider<'a> {
-    /// Temporary buffer
-    /// TODO: Describe purpose.
-    edge_data_set: FnvHashMap<Id, EdgeData>,
+    /// Maps HALFEDGE ID in the input mesh to EdgeData.
+    edge_data_set: Vec<Option<EdgeData>>,
 
     /// Maps FACE ID in the INPUT mesh to FaceData.
     face_data_set: FnvHashMap<Id, FaceData>,
@@ -124,7 +128,7 @@ pub struct CatmullClarkSubdivider<'a> {
 impl<'a> CatmullClarkSubdivider<'a> {
     pub fn new(input: &'a Mesh) -> Self {
         CatmullClarkSubdivider {
-            edge_data_set: FnvHashMap::default(),
+            edge_data_set: Vec::new(),
             face_data_set: FnvHashMap::default(),
             output: Mesh::new(),
             input,
@@ -215,11 +219,18 @@ impl<'a> CatmullClarkSubdivider<'a> {
         // overallocation.
         self.output.edges.reserve(halfedge_prediction / 2);
 
-        self.face_data_set.reserve(self.input.face_count);
-        self.edge_data_set.reserve(self.input.edges.len());
+        self.face_data_set.reserve(self.input.faces.len() + 1);
 
-        // input.rs is using 1-based indexing so we need + 1 here.
-        self.vertex_data_set = vec![None; self.input.vertex_count + 1];
+        // input.rs is using 1-based indexing so we need + 1 for the length of
+        // each Vector below. It is also not enough to use input.halfedge_count,
+        // the count represents "living" elements and may be less than the
+        // largest id (index).
+        //
+        // Using Vectors here may consume more memory than hash maps when the
+        // source mesh has been heavily edited with many deletions, but should
+        // be faster.
+        self.edge_data_set = vec![None; self.input.halfedges.len() + 1];
+        self.vertex_data_set = vec![None; self.input.vertices.len() + 1];
     }
 
     /// Helps to reduce the syntax noise when a Self is available. Splits Self
