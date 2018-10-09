@@ -128,20 +128,60 @@ pub struct CatmullClarkSubdivider<'a> {
 }
 
 impl<'a> CatmullClarkSubdivider<'a> {
+    /// Constructs a CatmullClarkSubdivider.
+    ///
+    /// This function will preallocate as much memory as it can predict is
+    /// necessary for the subdivision.
     pub fn new(input: &'a Mesh) -> Self {
+        let mut output = Mesh::new();
+
+        // Each halfedge produce 3 new
+        let halfedge_prediction = input.halfedge_count * 4;
+        output.halfedges.reserve(halfedge_prediction);
+
+        output.vertices.reserve(
+            input.vertex_count         // No vertices are removed
+            + input.halfedge_count / 2 // Each edge produce a new point
+            + input.face_count, // Each face produce a new point
+        );
+        output.faces.reserve(
+            input.face_count * 4, // Optimize for quads
+        );
+
+        // Is this prediction true for all meshes? If false, this is probably
+        // still ok since the worst-case here is degraded performance or
+        // overallocation.
+        //
+        // Insertion in this collection is at the time of writing the single
+        // largest time consumer that sticks out when profiling subdivision.
+        //
+        // TODO: Try to replace this with Vec or some other efficient lookup.
+        output.edges.reserve(halfedge_prediction / 2);
+
+        // input.rs is using 1-based indexing so we need + 1 for the length of
+        // each Vec below. It is also not enough to use input.halfedge_count,
+        // the count represents "living" elements and may be less than the
+        // largest id (index).
+        //
+        // Using Vecs here may consume more memory compared to hash maps when
+        // the source mesh has been heavily edited with many deletions, but
+        // should be faster in most cases.
+        let face_data_set = vec![None; input.faces.len() + 1];
+        let edge_data_set = vec![None; input.halfedges.len() + 1];
+        let vertex_data_set = vec![None; input.vertices.len() + 1];
+
         CatmullClarkSubdivider {
-            edge_data_set: Vec::new(),
-            face_data_set: Vec::new(),
-            output: Mesh::new(),
             input,
+            output,
             tmp_avg_of_edge_mids: Vec::new(),
             tmp_avg_of_faces: Vec::new(),
-            vertex_data_set: Vec::new(),
+            face_data_set,
+            edge_data_set,
+            vertex_data_set,
         }
     }
 
     pub fn generate(mut self) -> Mesh {
-        self.reserve_internal_memory();
         for face_id in FaceIterator::new(self.input) {
             let face_vertex_id = face_data_mut(
                 &self.input,
@@ -199,39 +239,6 @@ impl<'a> CatmullClarkSubdivider<'a> {
             }
         }
         self.output
-    }
-
-    /// Should be called once, internally, at subdivision start.
-    fn reserve_internal_memory(&mut self) {
-        // Each halfedge produce 3 new
-        let halfedge_prediction = self.input.halfedge_count * 4;
-        self.output.halfedges.reserve(halfedge_prediction);
-
-        self.output.vertices.reserve(
-            self.input.vertex_count         // No vertices are removed
-            + self.input.halfedge_count / 2 // Each edge produce a new point
-            + self.input.face_count, // Each face produce a new point
-        );
-        self.output.faces.reserve(
-            self.input.face_count * 4, // Optimize for quads
-        );
-
-        // Is this true for all meshes? If false, this is probably still ok
-        // since the worst-case here is degraded performance or
-        // overallocation.
-        self.output.edges.reserve(halfedge_prediction / 2);
-
-        // input.rs is using 1-based indexing so we need + 1 for the length of
-        // each Vec below. It is also not enough to use input.halfedge_count,
-        // the count represents "living" elements and may be less than the
-        // largest id (index).
-        //
-        // Using Vecs here may consume more memory compared to hash maps when
-        // the source mesh has been heavily edited with many deletions, but
-        // should be faster in most cases.
-        self.face_data_set = vec![None; self.input.faces.len() + 1];
-        self.edge_data_set = vec![None; self.input.halfedges.len() + 1];
-        self.vertex_data_set = vec![None; self.input.vertices.len() + 1];
     }
 
     /// Helps to reduce the syntax noise when a Self is available. Splits Self
