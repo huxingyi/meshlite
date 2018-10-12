@@ -216,11 +216,14 @@ impl<'a> CatmullClarkSubdivider<'a> {
                 for &(added_halfedge_id, added_vertex_id) in
                     added_halfedges.iter()
                 {
-                    self.output
-                        .vertex_mut(added_vertex_id)
-                        .unwrap()
-                        .halfedges
-                        .insert(added_halfedge_id);
+                    {
+                        let vert = self.output
+                            .vertex_mut(added_vertex_id)
+                            .unwrap();
+                        if !vert.halfedges.contains(&added_halfedge_id) {
+                            vert.halfedges.push(added_halfedge_id);
+                        }
+                    }
                     self.output.halfedge_mut(added_halfedge_id).unwrap().face =
                         added_face_id;
                     self.output

@@ -87,7 +87,7 @@ impl Import for Mesh {
                         let index = usize::from_str(index_str).unwrap() - 1;
                         added_halfedges.push((self.add_halfedge(), vertex_array[index]));
                     }
-                    self.add_halfedges_and_vertices(added_halfedges);
+                    self.add_halfedges_and_vertices(&added_halfedges);
                 },
                 _ => ()
             }

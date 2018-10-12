@@ -19,21 +19,20 @@ fn main() {
     println!("----------+-----------+-----------+-----------+-----------+-----------");
     for _ in 0..9 {
         let now = Instant::now();
-        let verts_before = mesh.vertex_count;
-        mesh = mesh.subdivide();
-        let added_verts = mesh.vertex_count - verts_before;
+        let new_mesh = mesh.subdivide();
         let seconds = to_seconds_f64(&now.elapsed());
-        let verts_per_second = (added_verts as f64 / seconds).round();
+        let verts_per_second = (new_mesh.vertex_count as f64 / seconds).round();
         all_vps.push(verts_per_second);
         println!(
             "{: <9} | {: <9} | {: <9} | {: <9} | {: <9} | {: <9.2}",
-            mesh.face_count,
-            mesh.vertex_count,
-            mesh.halfedge_count,
-            mesh.edges.len(),
+            new_mesh.face_count,
+            new_mesh.vertex_count,
+            new_mesh.halfedge_count,
+            new_mesh.edges.len(),
             verts_per_second,
             seconds * 1000.0
         );
+        mesh = new_mesh; // drop the old mesh outside the benchmark timer
     }
     println!(
         "Vertices per second, min: {}, max: {}, avg: {}",

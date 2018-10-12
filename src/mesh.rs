@@ -19,11 +19,26 @@ use std::f32;
 
 pub type Id = usize;
 
+// Optimized for quad meshes, since that is very common in high-poly models
+// during editing. By subdividing some lower resolution model, pure quad models
+// are produced. It could be worth tweaking this constant for other use-cases
+// though, triangulation will create more halfedges for many vertices and would
+// benefit from a higher number, but that would consume more memory for all
+// meshes which would not be ideal. It could be worth having completely separate
+// implementations for quad, tri and polygon meshes at later time? Or maybe use
+// generics and/or macros to specialize some parts of the implementation?
+const VERTEX_HALFEDGE_INLINE_COUNT: usize = 4;
+
 #[derive(Debug)]
 pub struct Vertex {
     pub id: Id,
     pub position: Point3<f32>,
-    pub halfedges: FnvHashSet<Id>,
+
+    /// This is at the time of writing used as a set but is implemented using a
+    /// SmallVec. Finding or implementing something like a "SmallSet" could
+    /// provide a better API.
+    pub halfedges: SmallVec<[Id; VERTEX_HALFEDGE_INLINE_COUNT]>,
+
     pub prev: Id,
     pub next: Id,
     pub alive: bool,
@@ -317,7 +332,12 @@ impl Mesh {
         for &halfedge_id in halfedge_collection.iter() {
             let vertex_count_need_reduce = {
                 let vertex = self.halfedge_start_vertex_mut(halfedge_id).unwrap();
-                vertex.halfedges.remove(&halfedge_id);
+                for i in 0..vertex.halfedges.len() {
+                    if halfedge_id == vertex.halfedges[i] {
+                        vertex.halfedges.remove(i);
+                        break;
+                    }
+                }
                 if vertex.halfedges.is_empty() {
                     vertex.alive = false;
                     true
@@ -384,7 +404,7 @@ impl Mesh {
         let new_id = self.vertices.len() + 1;
         self.vertices.push(Vertex {
             id: new_id,
-            halfedges: FnvHashSet::default(),
+            halfedges: SmallVec::<[Id; VERTEX_HALFEDGE_INLINE_COUNT]>::new(),
             prev: 0,
             next: 0,
             position : position,
@@ -487,7 +507,7 @@ impl Mesh {
         for i in 0..added_vertices.len() {
             added_halfedges.push((self.add_halfedge(), added_vertices[i]));
         }
-        self.add_halfedges_and_vertices(added_halfedges)
+        self.add_halfedges_and_vertices(&added_halfedges)
     }
 
     pub fn add_positions(&mut self, added_positions : Vec<Point3<f32>>) -> Id {
@@ -501,14 +521,20 @@ impl Mesh {
         self.add_vertices(added_vertices)
     }
 
-    pub fn add_halfedges_and_vertices(&mut self, added_halfedges : Vec<(Id, Id)>) -> Id {
+    pub fn add_halfedges_and_vertices(&mut self, added_halfedges: &[(Id, Id)]) -> Id {
         assert!(added_halfedges.len() < 1000);
         if added_halfedges.is_empty() {
             return 0;
         }
         let added_face_id = self.add_face();
         for &(added_halfedge_id, added_vertex_id) in added_halfedges.iter() {
-            self.vertex_mut(added_vertex_id).unwrap().halfedges.insert(added_halfedge_id);
+            {
+                let vert = self.vertex_mut(added_vertex_id).unwrap();
+                let halfedges = &mut vert.halfedges;
+                if !halfedges.contains(&added_halfedge_id) {
+                    halfedges.push(added_halfedge_id);
+                }
+            }
             self.halfedge_mut(added_halfedge_id).unwrap().face = added_face_id;
             self.halfedge_mut(added_halfedge_id).unwrap().vertex = added_vertex_id;
         }
@@ -545,7 +571,12 @@ impl Mesh {
                 {
                     let vertex_count_need_reduce = {
                         let vertex = self.halfedge_start_vertex_mut(old_vertex_id).unwrap();
-                        vertex.halfedges.remove(&halfedge_id);
+                        for i in 0..vertex.halfedges.len() {
+                            if vertex.halfedges[i] == halfedge_id {
+                                vertex.halfedges.remove(i);
+                                break;
+                            }
+                        }
                         if vertex.halfedges.is_empty() {
                             vertex.alive = false;
                             true
@@ -576,7 +607,7 @@ impl Mesh {
             added_halfedges.push((self.add_halfedge(), right_bottom));
             added_halfedges.push((self.add_halfedge(), right_top));
             added_halfedges.push((self.add_halfedge(), left_top));
-            self.add_halfedges_and_vertices(added_halfedges);
+            self.add_halfedges_and_vertices(&added_halfedges);
         }
         if need_fill_downside {
             let mut added_halfedges : Vec<(Id, Id)> = Vec::new();
@@ -584,7 +615,7 @@ impl Mesh {
                 let j = (halfedges.len() - i) % halfedges.len();
                 added_halfedges.push((downside_halfedges[j], downside_vertices[j]));
             }
-            self.add_halfedges_and_vertices(added_halfedges);
+            self.add_halfedges_and_vertices(&added_halfedges);
         }
     }
 
@@ -608,7 +639,7 @@ impl Mesh {
         for i in 0..points.len() {
             added_halfedges.push((self.add_halfedge(), self.add_vertex(points[i])));
         }
-        self.add_halfedges_and_vertices(added_halfedges)
+        self.add_halfedges_and_vertices(&added_halfedges)
     }
 
     pub fn transform(&mut self, mat: &Matrix4<f32>) -> &mut Self {
@@ -679,7 +710,7 @@ impl Mesh {
                     added_halfedges.push((self.add_halfedge(), new_vertex_id));
                 }
             }
-            self.add_halfedges_and_vertices(added_halfedges);
+            self.add_halfedges_and_vertices(&added_halfedges);
         }
     }
 
@@ -701,7 +732,7 @@ impl Mesh {
             for new_vert_id in verts.iter().rev() {
                 added_halfedges.push((new_mesh.add_halfedge(), *new_vert_id));
             }
-            new_mesh.add_halfedges_and_vertices(added_halfedges);
+            new_mesh.add_halfedges_and_vertices(&added_halfedges);
         }
         new_mesh
     }
