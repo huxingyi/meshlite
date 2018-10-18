@@ -18,6 +18,7 @@ struct Node {
     base_norm: Vector3<f32>,
     generated: bool,
     base_norm_resolved: bool,
+    base_norm_searched: bool,
     cut_subdiv_count: Option<usize>,
     round_way: Option<i32>,
     generate_from_node_id: Option<usize>,
@@ -29,31 +30,6 @@ struct Node {
 struct Edge {
     cuts: Vec<(Vec<Id>, Vector3<f32>)>,
 }
-
-// Commented out to allow a clean build, free from warnings.
-//
-// struct Ring {
-//     pub key: Vec<NodeIndex>,
-//     pub nodes: Vec<NodeIndex>
-// }
-// 
-// impl Ring {
-//     pub fn new(first: NodeIndex, second: NodeIndex, third: NodeIndex, fourth: NodeIndex) -> Self {
-//         let mut nodes = Vec::new();
-//         nodes.push(first);
-//         nodes.push(second);
-//         nodes.push(third);
-//         if fourth != NodeIndex::end() {
-//             nodes.push(fourth);
-//         }
-//         let mut key = nodes.clone();
-//         key.sort();
-//         Ring {
-//             key: key,
-//             nodes: nodes,
-//         }
-//     }
-// }
 
 pub struct Bmesh {
     graph : Graph<Node, Edge, Undirected>,
@@ -178,15 +154,49 @@ impl Bmesh {
         pick_base_plane_norm(directs, positions, weights)
     }
 
+    fn search_a_no_none_base_norm_from_neighbors(&mut self, node_index: NodeIndex) -> Option<Vector3<f32>> {
+        let mut indicies = Vec::new();
+        {
+            let neighbors = self.graph.neighbors_undirected(node_index);
+            for other_index in neighbors {
+                indicies.push(other_index);
+            }
+        }
+        for other_index in indicies.clone() {
+            let base_norm = self.calculate_node_base_norm(other_index);
+            if base_norm.is_some() {
+                return base_norm;
+            }
+        }
+        for other_index in indicies {
+            if self.graph.node_weight(other_index).unwrap().base_norm_searched {
+                continue;
+            }
+            self.graph.node_weight_mut(other_index).unwrap().base_norm_searched = true;
+            let base_norm = self.search_a_no_none_base_norm_from_neighbors(other_index);
+            if base_norm.is_some() {
+                return base_norm;
+            }
+        }
+        None
+    }
+
     fn resolve_base_norm_from_node(&mut self, node_index: NodeIndex) {
         if self.graph.node_weight(node_index).unwrap().base_norm_resolved {
             return;
         }
-        let base_norm = self.calculate_node_base_norm(node_index);
+        let mut base_norm = self.calculate_node_base_norm(node_index);
         if base_norm.is_none() {
-            const WORLD_Z_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 0.0, z: 1.0};
-            self.resolve_base_norm_for_leaves_from_node(node_index, WORLD_Z_AXIS);
-            return;
+            // Find a no none base norm from neighbors
+            self.graph.node_weight_mut(node_index).unwrap().base_norm_searched = true;
+            let base_norm_of_some_direct_or_indirect_neighbor = self.search_a_no_none_base_norm_from_neighbors(node_index);
+            // If all the base norm are none, then we use the Z axis
+            base_norm = if base_norm_of_some_direct_or_indirect_neighbor.is_none() {
+                const WORLD_Z_AXIS : Vector3<f32> = Vector3 {x: 0.0, y: 0.0, z: 1.0};
+                Some(WORLD_Z_AXIS)
+            } else {
+                base_norm_of_some_direct_or_indirect_neighbor
+            }
         }
         self.resolve_base_norm_for_leaves_from_node(node_index, base_norm.unwrap());
     }
@@ -671,6 +681,7 @@ impl Node {
             base_norm: Vector3 {x:0.0, y:0.0, z:1.0},
             generated: false,
             base_norm_resolved: false,
+            base_norm_searched: false,
             cut_subdiv_count: None,
             round_way: None,
             generate_from_node_id: None,
