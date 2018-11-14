@@ -652,11 +652,11 @@ impl Bmesh {
             let root_node = NodeIndex::new(root_node_id);
             let node_position = self.graph.node_weight(root_node).unwrap().position;
             let node_radius = self.graph.node_weight(root_node).unwrap().radius;
-            let face_id = self.mesh.add_plane(node_radius, node_radius);
+            let face_id = self.mesh.add_plane(node_radius * 2.0, node_radius * 2.0);
             let normal = self.mesh.face_norm(face_id);
-            self.mesh.extrude_face(face_id, normal, node_radius).translate(node_position.x, 
+            self.mesh.extrude_face(face_id, normal, node_radius * 2.0).translate(node_position.x, 
                 node_position.y, 
-                node_position.z - node_radius * 0.5);
+                node_position.z - node_radius);
             if self.cut_subdiv_count > 0 {
                 let subdived_mesh = self.mesh.subdivide();
                 self.mesh = subdived_mesh;
