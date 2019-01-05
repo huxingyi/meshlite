@@ -8,20 +8,6 @@ readme = "README.md"
 keywords = ["mesh", "3D", "CSG", "polygon", "graphics", "halfedge", "bmesh", "procedural"]
 categories = ["rendering", "rendering::data-formats"]
 license = "MIT"
-include = [
-    "*.md",
-    "*.sh",
-    "*.py",
-    "*.yml",
-    "AUTHORS",
-    "Cargo.toml",
-    "LICENSE",
-    "**/*.rs",
-    "**/*.h",
-    "**/*.md",
-    "ffi/Cargo.toml",
-    "ffi/LICENSE"
-]
 
 [badges]
 appveyor = { repository = "huxingyi/meshlite" }
