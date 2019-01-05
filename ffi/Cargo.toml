@@ -1,6 +1,6 @@
 [package]
 name = "meshlite_ffi"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jeremy HU <huxingyi@msn.com>", "anderejd <https://github.com/anderejd>"]
 description = "C ABI layer for meshlite. Allows building meshlite as a dynamic library."
 repository = "https://github.com/huxingyi/meshlite/tree/master/ffi"
