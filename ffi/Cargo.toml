@@ -2,6 +2,16 @@
 name = "meshlite_ffi"
 version = "0.1.0"
 authors = ["Jeremy HU <huxingyi@msn.com>", "anderejd <https://github.com/anderejd>"]
+description = "C ABI layer for meshlite. Allows building meshlite as a dynamic library."
+repository = "https://github.com/huxingyi/meshlite/ffi"
+readme = "README.md"
+keywords = ["mesh", "3D", "polygon", "graphics", "halfedge"]
+categories = ["rendering", "rendering::data-formats"]
+license = "MIT"
+
+[badges]
+appveyor = { repository = "huxingyi/meshlite" }
+maintenance = { status = "experimental" }
 
 [lib]
 name = "meshlite_ffi"
@@ -9,5 +19,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 cgmath = "0.16"
-meshlite = { path = "../" }
+meshlite = "0.2"
 
