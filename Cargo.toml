@@ -2,6 +2,16 @@
 name = "meshlite"
 version = "0.2.0"
 authors = ["Jeremy HU <huxingyi@msn.com>", "anderejd <https://github.com/anderejd>"]
+description = "meshlite is a library with focus on 3D mesh generating and processing in rust language. Currently, it’s been used in Dust3D project as the core library of mesh generating.   https://dust3d.org"
+repository = "https://github.com/huxingyi/meshlite"
+readme = "README.md"
+keywords = ["mesh", "3D", "CSG", "polygon", "graphics", "halfedge", "bmesh", "procedural"]
+categories = ["rendering", "rendering::data-formats"]
+license = "MIT"
+
+[badges]
+appveyor = { repository = "huxingyi/meshlite" }
+maintenance = { status = "experimental" }
 
 # Uncomment when using the profiler script
 # [profile.release]
