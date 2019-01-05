@@ -1,7 +1,7 @@
 [package]
 name = "meshlite"
 version = "0.2.0"
-authors = ["Xingyi HU <huxingyi@msn.com>"]
+authors = ["Jeremy HU <huxingyi@msn.com>", "anderejd <https://github.com/anderejd>"]
 
 # Uncomment when using the profiler script
 # [profile.release]
